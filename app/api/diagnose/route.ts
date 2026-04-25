@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { createHash, randomBytes } from "node:crypto";
-// @ts-expect-error convex codegen
 import { api } from "../../../convex/_generated/api";
 import { diagnose } from "../../../lib/diagnose";
 import type { DiagnoseRequest, DiagnoseResponse, DiagnosisJson } from "../../../lib/types";
@@ -131,15 +130,7 @@ export async function POST(request: Request) {
 
   // ---- run the brain ----
   let diagnosis: DiagnosisJson;
-  let raw: {
-    serpPositionCurrent?: number;
-    pageTextNormalized?: string;
-    waybackTextDiff?: string;
-    pagespeedJson?: string;
-    waybackSnapshotCount?: number;
-    algoUpdatesInWindowJson?: string;
-    rawClaudeResponse?: string;
-  };
+  let raw: Awaited<ReturnType<typeof diagnose>>["raw"];
   try {
     const result = await diagnose({
       url: body.url,
@@ -153,6 +144,24 @@ export async function POST(request: Request) {
     return badResponse("internal_error", "diagnosis failed. try again.", 500, setCookieHeader);
   }
 
+  // ---- flatten brain's structured raw output for Convex persistence ----
+  const persistedRaw = {
+    pageTextNormalized:
+      raw.pageHtml.ok ? raw.pageHtml.data.normalizedText : undefined,
+    waybackTextDiff:
+      raw.wayback.ok ? raw.wayback.data.textDiff ?? undefined : undefined,
+    waybackSnapshotCount:
+      raw.wayback.ok ? raw.wayback.data.snapshotCount : undefined,
+    pagespeedJson:
+      raw.pagespeed.ok ? JSON.stringify(raw.pagespeed.data) : undefined,
+    algoUpdatesInWindowJson:
+      raw.algoUpdates.ok ? JSON.stringify(raw.algoUpdates.data.updates) : undefined,
+    rawClaudeResponse: JSON.stringify({
+      content: raw.claude.rawContent,
+      stopReason: raw.claude.stopReason,
+    }),
+  };
+
   // ---- persist ----
   let shareToken: string;
   try {
@@ -161,13 +170,12 @@ export async function POST(request: Request) {
       keyword: body.keyword,
       priorRank: body.priorRank,
       diagnosisJson: JSON.stringify(diagnosis),
-      serpPositionCurrent: raw.serpPositionCurrent,
-      pageTextNormalized: raw.pageTextNormalized,
-      waybackTextDiff: raw.waybackTextDiff,
-      pagespeedJson: raw.pagespeedJson,
-      waybackSnapshotCount: raw.waybackSnapshotCount,
-      algoUpdatesInWindowJson: raw.algoUpdatesInWindowJson,
-      rawClaudeResponse: raw.rawClaudeResponse,
+      pageTextNormalized: persistedRaw.pageTextNormalized,
+      waybackTextDiff: persistedRaw.waybackTextDiff,
+      pagespeedJson: persistedRaw.pagespeedJson,
+      waybackSnapshotCount: persistedRaw.waybackSnapshotCount,
+      algoUpdatesInWindowJson: persistedRaw.algoUpdatesInWindowJson,
+      rawClaudeResponse: persistedRaw.rawClaudeResponse,
       optedInToExamples: body.optInToExamples,
       ipHash,
     })) as { shareToken: string; totalSubmissions: number };

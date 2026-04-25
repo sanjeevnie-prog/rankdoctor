@@ -11,13 +11,13 @@
 //   6. return {diagnosis, raw}
 
 import Anthropic from "@anthropic-ai/sdk";
-import { getAnthropic } from "./anthropic-client.js";
-import { SYSTEM_PROMPT } from "./prompts/diagnosis-system.js";
-import { fetchPageHtml, type PageHtmlResult } from "./fetchers/page-html.js";
-import { fetchWayback, type WaybackResult } from "./fetchers/wayback.js";
-import { fetchPagespeed, type PagespeedResult } from "./fetchers/pagespeed.js";
-import { fetchAlgoUpdates, type AlgoUpdatesResult } from "./fetchers/algo-updates.js";
-import { buildSerpSearchHint } from "./fetchers/serp.js";
+import { getAnthropic } from "./anthropic-client";
+import { SYSTEM_PROMPT } from "./prompts/diagnosis-system";
+import { fetchPageHtml, type PageHtmlResult } from "./fetchers/page-html";
+import { fetchWayback, type WaybackResult } from "./fetchers/wayback";
+import { fetchPagespeed, type PagespeedResult } from "./fetchers/pagespeed";
+import { fetchAlgoUpdates, type AlgoUpdatesResult } from "./fetchers/algo-updates";
+import { buildSerpSearchHint } from "./fetchers/serp";
 import type {
   DiagnoseRequest,
   DiagnosisJson,

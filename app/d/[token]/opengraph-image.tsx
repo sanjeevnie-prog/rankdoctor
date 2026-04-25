@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og";
 import { ConvexHttpClient } from "convex/browser";
-// @ts-expect-error convex codegen
 import { api } from "@/convex/_generated/api";
 import type { DiagnosisJson } from "@/lib/types";
 

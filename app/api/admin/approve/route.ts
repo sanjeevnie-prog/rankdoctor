@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
-// @ts-expect-error convex codegen
 import { api } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,10 @@ export async function POST(request: Request) {
 
   try {
     const convex = new ConvexHttpClient(convexUrl);
-    await convex.mutation(api.diagnoses.approve, { id, key });
+    await convex.mutation(api.diagnoses.approve, {
+      id: id as Id<"diagnoses">,
+      key,
+    });
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch {
     // either auth failure or row not found — collapse both to a generic { ok: false }

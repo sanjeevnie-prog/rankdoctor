@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
-// @ts-expect-error convex codegen
 import { api } from "../../../convex/_generated/api";
 
 export const runtime = "nodejs";
