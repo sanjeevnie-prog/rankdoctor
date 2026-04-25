@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { DiagnosisOutput } from "@/components/DiagnosisOutput";
+import { ShareCardPreview } from "@/components/ShareCardPreview";
 import { getConvex } from "@/lib/convexServer";
 import type { DiagnosisJson } from "@/lib/types";
 
@@ -66,6 +67,12 @@ export default async function DiagnosisPage({
 
       <div className="mt-10">
         <DiagnosisOutput diagnosis={diagnosis} />
+      </div>
+
+      {/* Same share card the submitter saw before tweeting — gives this page
+          a consistent framing for visitors who landed via the link. */}
+      <div className="mt-10">
+        <ShareCardPreview diagnosis={diagnosis} />
       </div>
 
       <footer className="mt-16 pt-8 border-t border-border-soft">

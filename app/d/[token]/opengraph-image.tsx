@@ -2,26 +2,19 @@ import { ImageResponse } from "next/og";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import type { DiagnosisJson } from "@/lib/types";
+import { deriveShareCardFields, type ShareCardFields } from "@/lib/share-card";
 
 // OG / twitter-card image for /d/{token}.
-// Same visual as the on-screen ShareCardPreview component — one design,
-// rendered twice (once as PNG here, once as React in the preview component).
-// When updating the layout, update both.
+// Pulls share-card fields from lib/share-card.ts — same source of truth as
+// the on-screen ShareCardPreview component, so the image and the in-page
+// preview never drift apart.
 
 export const runtime = "nodejs";
 export const contentType = "image/png";
 export const size = { width: 1200, height: 630 };
 export const alt = "rankdoctor diagnosis";
 
-type CardData =
-  | {
-      ok: true;
-      hostname: string;
-      keyword: string;
-      rankLine: string;
-      topFindingHeadline: string;
-    }
-  | { ok: false };
+type CardData = (ShareCardFields & { ok: true }) | { ok: false };
 
 async function loadCardData(token: string): Promise<CardData> {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
@@ -32,35 +25,19 @@ async function loadCardData(token: string): Promise<CardData> {
       | (DiagnosisJson & { share_token: string })
       | null;
     if (!row) return { ok: false };
-
-    let hostname = row.url;
-    try {
-      hostname = new URL(row.url).hostname.replace(/^www\./, "");
-    } catch {
-      /* keep raw url */
-    }
-
-    const rank = row.rank_info;
-    const rankLine =
-      rank.history_available && typeof rank.current_rank === "number"
-        ? `rank dropped ${rank.prior_rank} → ${rank.current_rank}`
-        : typeof rank.current_rank === "number"
-          ? `currently ranking #${rank.current_rank}`
-          : "ranking not in top 10";
-
-    const topFindingHeadline =
-      row.causes[0]?.headline ?? "diagnosis available";
-
-    return {
-      ok: true,
-      hostname,
-      keyword: row.keyword,
-      rankLine,
-      topFindingHeadline,
-    };
+    return { ok: true, ...deriveShareCardFields(row) };
   } catch {
     return { ok: false };
   }
+}
+
+// Clip the top-finding to two lines' worth of text so the OG image matches
+// the on-screen preview's `line-clamp-2` behavior. ImageResponse doesn't
+// support line-clamp via CSS, so we cap it by character count.
+const TOP_FINDING_MAX_CHARS = 130;
+function clipTopFinding(s: string): string {
+  if (s.length <= TOP_FINDING_MAX_CHARS) return s;
+  return s.slice(0, TOP_FINDING_MAX_CHARS - 1).trimEnd() + "…";
 }
 
 export default async function OG({
@@ -176,7 +153,7 @@ export default async function OG({
               maxWidth: 1000,
             }}
           >
-            {data.topFindingHeadline}
+            {clipTopFinding(data.topFindingHeadline)}
           </div>
         </div>
       </div>

@@ -1,29 +1,16 @@
 import type { DiagnosisJson } from "@/lib/types";
+import { deriveShareCardFields } from "@/lib/share-card";
 
 // On-screen share card preview. Shown above the "tweet this" button on the
-// result screen and on /d/[token] so the user sees what their followers will see.
+// result screen AND on /d/[token] (so anyone hitting the share link also
+// sees the card framing). Same visual + same content as
+// app/d/[token]/opengraph-image.tsx — both pull from deriveShareCardFields().
 //
-// Same visual as app/d/[token]/opengraph-image.tsx — when updating the layout,
-// update both. (Cannot share JSX directly: ImageResponse is a different
-// rendering pipeline that doesn't accept Tailwind classes.)
+// JSX can't be shared directly between the two: ImageResponse uses inline
+// styles, not Tailwind. The data derivation IS shared (lib/share-card.ts).
 export function ShareCardPreview({ diagnosis }: { diagnosis: DiagnosisJson }) {
-  const hostname = (() => {
-    try {
-      return new URL(diagnosis.url).hostname.replace(/^www\./, "");
-    } catch {
-      return diagnosis.url;
-    }
-  })();
-
-  const rank = diagnosis.rank_info;
-  const rankLine =
-    rank.history_available && typeof rank.current_rank === "number"
-      ? `rank dropped ${rank.prior_rank} → ${rank.current_rank}`
-      : typeof rank.current_rank === "number"
-        ? `currently ranking #${rank.current_rank}`
-        : "ranking not in top 10";
-
-  const topFindingHeadline = diagnosis.causes[0]?.headline ?? "diagnosis available";
+  const { hostname, keyword, rankLine, topFindingHeadline } =
+    deriveShareCardFields(diagnosis);
 
   return (
     <div className="space-y-3">
@@ -54,7 +41,7 @@ export function ShareCardPreview({ diagnosis }: { diagnosis: DiagnosisJson }) {
             <div className="flex items-baseline gap-2 text-[12px] md:text-[15px]">
               <span className="text-text">{hostname}</span>
               <span className="text-text-muted">·</span>
-              <span className="text-text-soft">&ldquo;{diagnosis.keyword}&rdquo;</span>
+              <span className="text-text-soft">&ldquo;{keyword}&rdquo;</span>
             </div>
           </div>
 

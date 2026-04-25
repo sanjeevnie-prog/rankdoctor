@@ -8,7 +8,6 @@ import { DiagnoseForm } from "@/components/DiagnoseForm";
 import { LoadingState } from "@/components/LoadingState";
 import { DiagnosisOutput } from "@/components/DiagnosisOutput";
 import { EmailCapture } from "@/components/EmailCapture";
-import { MOCK_DIAGNOSIS } from "@/lib/mock";
 import type { DiagnoseResponse, DiagnosisJson } from "@/lib/types";
 
 type RecentRun = {
@@ -38,18 +37,31 @@ function HomeInner() {
   const searchParams = useSearchParams();
   const isMock = searchParams.get("mock") === "1";
 
-  const [stage, setStage] = useState<Stage>(
-    isMock
-      ? { kind: "result", diagnosis: MOCK_DIAGNOSIS, share_token: "mock-token" }
-      : { kind: "form" },
-  );
+  const [stage, setStage] = useState<Stage>({ kind: "form" });
   const [capStatus, setCapStatus] = useState<{
     total: number;
     cap: number;
     closed: boolean;
   } | null>(null);
   const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
-  const [optedInToExamples, setOptedInToExamples] = useState(false);
+
+  // ?mock=1 — dynamic-import the mock so it doesn't ship to every user.
+  useEffect(() => {
+    if (!isMock) return;
+    let aborted = false;
+    import("@/lib/mock").then(({ MOCK_DIAGNOSIS }) => {
+      if (!aborted) {
+        setStage({
+          kind: "result",
+          diagnosis: MOCK_DIAGNOSIS,
+          share_token: "mock-token",
+        });
+      }
+    });
+    return () => {
+      aborted = true;
+    };
+  }, [isMock]);
 
   // pull cap-status on form mount
   useEffect(() => {
@@ -67,7 +79,6 @@ function HomeInner() {
 
   async function handleSubmit({ url, keyword }: { url: string; keyword: string }) {
     setStage({ kind: "loading" });
-    setOptedInToExamples(false);
 
     try {
       const res = await fetch("/api/diagnose", {
@@ -112,7 +123,6 @@ function HomeInner() {
   }
 
   async function handleOptInChange(optIn: boolean) {
-    setOptedInToExamples(optIn);
     if (stage.kind !== "result") return;
     // option B opt-in flow: dedicated endpoint flips the row's optedInToExamples flag.
     // best-effort — opt-in is non-critical to the UI; we don't surface failure.
@@ -190,9 +200,6 @@ function HomeInner() {
       )}
 
       <Footer />
-
-      {/* keep optedInToExamples reachable so unused-var lint stays quiet */}
-      <span className="sr-only">{optedInToExamples ? "opted-in" : ""}</span>
     </div>
   );
 }

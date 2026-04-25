@@ -114,7 +114,7 @@ async function main() {
   // Write full output to tmp/
   const tmpDir = resolve(process.cwd(), "tmp");
   await mkdir(tmpDir, { recursive: true });
-  const outPath = resolve(tmpDir, `brain-${Math.floor(Date.now() / 1000)}.json`);
+  const outPath = resolve(tmpDir, `brain-${Date.now()}.json`);
   await writeFile(outPath, JSON.stringify({ diagnosis, raw }, null, 2));
   console.log(colorize(`wrote ${outPath}`, DIM));
 }

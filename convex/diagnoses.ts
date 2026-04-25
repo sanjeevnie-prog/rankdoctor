@@ -24,6 +24,10 @@ function topFindingSummary(diagnosisJson: string): string {
   }
 }
 
+// Limits — single source of truth across the cap + rate-limit checks.
+const CAP = 250;
+const RATE_LIMIT = 5;
+
 // 32-char crypto-safe random hex token (16 bytes).
 // uses Web Crypto so it works in Convex's runtime.
 function generateShareToken(): string {
@@ -38,13 +42,20 @@ function generateShareToken(): string {
 
 // ---- mutations ----
 
+// All cap + rate-limit checks live INSIDE this mutation so they can't race.
+// Convex mutations are serializable, so two concurrent inserts at total=249
+// will not both succeed — the second one re-reads meta and bails on the cap.
+//
+// Returns one of:
+//   { ok: true, shareToken, totalSubmissions } — happy path
+//   { ok: false, reason: "cap_reached" }       — global 250 hit
+//   { ok: false, reason: "rate_limited" }      — this ipHash already at 5
 export const insert = mutation({
   args: {
     url: v.string(),
     keyword: v.string(),
     priorRank: v.optional(v.number()),
     diagnosisJson: v.string(),
-    serpPositionCurrent: v.optional(v.number()),
     pageTextNormalized: v.optional(v.string()),
     waybackTextDiff: v.optional(v.string()),
     pagespeedJson: v.optional(v.string()),
@@ -54,11 +65,38 @@ export const insert = mutation({
     optedInToExamples: v.boolean(),
     ipHash: v.string(),
   },
-  returns: v.object({
-    shareToken: v.string(),
-    totalSubmissions: v.number(),
-  }),
+  returns: v.union(
+    v.object({
+      ok: v.literal(true),
+      shareToken: v.string(),
+      totalSubmissions: v.number(),
+    }),
+    v.object({
+      ok: v.literal(false),
+      reason: v.union(v.literal("cap_reached"), v.literal("rate_limited")),
+    }),
+  ),
   handler: async (ctx, args) => {
+    // ---- atomic cap check ----
+    const metaRow = await ctx.db
+      .query("meta")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+    const total = metaRow?.totalSubmissions ?? 0;
+    if (total >= CAP) {
+      return { ok: false as const, reason: "cap_reached" as const };
+    }
+
+    // ---- atomic rate-limit check ----
+    const userRows = await ctx.db
+      .query("diagnoses")
+      .withIndex("by_ip_hash", (q) => q.eq("ipHash", args.ipHash))
+      .collect();
+    if (userRows.length >= RATE_LIMIT) {
+      return { ok: false as const, reason: "rate_limited" as const };
+    }
+
+    // ---- insert + increment counter ----
     const shareToken = generateShareToken();
 
     await ctx.db.insert("diagnoses", {
@@ -66,7 +104,6 @@ export const insert = mutation({
       keyword: args.keyword,
       priorRank: args.priorRank,
       diagnosisJson: args.diagnosisJson,
-      serpPositionCurrent: args.serpPositionCurrent,
       pageTextNormalized: args.pageTextNormalized,
       waybackTextDiff: args.waybackTextDiff,
       pagespeedJson: args.pagespeedJson,
@@ -80,46 +117,39 @@ export const insert = mutation({
       createdAt: Date.now(),
     });
 
-    // atomically increment meta.totalSubmissions, creating the row on first run
-    const metaRow = await ctx.db
-      .query("meta")
-      .withIndex("by_key", (q) => q.eq("key", "global"))
-      .unique();
-
-    let totalSubmissions: number;
+    const totalSubmissions = total + 1;
     if (metaRow === null) {
-      totalSubmissions = 1;
       await ctx.db.insert("meta", {
         key: "global",
         totalSubmissions,
       });
     } else {
-      totalSubmissions = metaRow.totalSubmissions + 1;
       await ctx.db.patch(metaRow._id, { totalSubmissions });
     }
 
-    return { shareToken, totalSubmissions };
+    return { ok: true as const, shareToken, totalSubmissions };
   },
 });
 
 // option B opt-in flow: user ticks the checkbox AFTER seeing the diagnosis.
-// frontend POSTs /api/diagnose-optin with { share_token, optedIn }, which calls this.
-// idempotent — calling with the same value is a no-op.
+// frontend POSTs /api/diagnose-optin which forwards the caller's ipHash so we
+// can verify the toggler is the original submitter. silent no-op when the row
+// is missing OR the ipHash doesn't match (don't leak existence either way).
+// idempotent: calling with the same value is a no-op.
 export const setOptIn = mutation({
   args: {
     shareToken: v.string(),
     optedIn: v.boolean(),
+    ipHash: v.string(),
   },
   returns: v.null(),
-  handler: async (ctx, { shareToken, optedIn }) => {
+  handler: async (ctx, { shareToken, optedIn, ipHash }) => {
     const row = await ctx.db
       .query("diagnoses")
       .withIndex("by_share_token", (q) => q.eq("shareToken", shareToken))
       .unique();
-    if (row === null) {
-      // never leak existence; silently accept
-      return null;
-    }
+    if (row === null) return null;
+    if (row.ipHash !== ipHash) return null;
     if (row.optedInToExamples !== optedIn) {
       await ctx.db.patch(row._id, { optedInToExamples: optedIn });
     }
@@ -213,55 +243,134 @@ export const getByShareToken = query({
     } catch {
       return null;
     }
-    if (typeof parsed !== "object" || parsed === null) return null;
+    return validatePublicDiagnosis(parsed, row.shareToken);
+  },
+});
 
-    const d = parsed as {
-      url?: string;
-      keyword?: string;
-      rank_info?: unknown;
-      expected_recovery?: string;
-      causes?: unknown;
-      data_gaps?: unknown;
-      generated_at?: number;
+// Strict structural validator for the option-A public shape. Any deviation
+// from the expected schema returns null — never throw, never let Convex's
+// return-validator reject mid-flight (which would surface as a query error
+// to the consumer instead of a clean 404).
+type PublicDiagnosis = {
+  url: string;
+  keyword: string;
+  rank_info:
+    | { history_available: true; current_rank: number | null; prior_rank: number; drop: number }
+    | { history_available: false; current_rank: number | null };
+  expected_recovery: string;
+  causes: Array<{
+    severity: "critical" | "high" | "medium";
+    headline: string;
+    explanation: string;
+    fix: string;
+    confidence?: number;
+  }>;
+  data_gaps: Array<{
+    source: "serp" | "page_html" | "wayback" | "pagespeed" | "algo_updates";
+    reason: string;
+  }>;
+  generated_at: number;
+  share_token: string;
+};
+
+function validatePublicDiagnosis(
+  parsed: unknown,
+  shareToken: string,
+): PublicDiagnosis | null {
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const d = parsed as Record<string, unknown>;
+
+  if (
+    typeof d.url !== "string" ||
+    typeof d.keyword !== "string" ||
+    typeof d.expected_recovery !== "string" ||
+    typeof d.generated_at !== "number"
+  ) {
+    return null;
+  }
+
+  // rank_info — discriminated union, validate per branch
+  const ri = d.rank_info;
+  if (typeof ri !== "object" || ri === null) return null;
+  const rir = ri as Record<string, unknown>;
+  let rank_info: PublicDiagnosis["rank_info"];
+  if (rir.history_available === true) {
+    if (typeof rir.prior_rank !== "number") return null;
+    if (typeof rir.drop !== "number") return null;
+    if (rir.current_rank !== null && typeof rir.current_rank !== "number") return null;
+    rank_info = {
+      history_available: true,
+      current_rank: rir.current_rank as number | null,
+      prior_rank: rir.prior_rank,
+      drop: rir.drop,
     };
+  } else if (rir.history_available === false) {
+    if (rir.current_rank !== null && typeof rir.current_rank !== "number") return null;
+    rank_info = {
+      history_available: false,
+      current_rank: rir.current_rank as number | null,
+    };
+  } else {
+    return null;
+  }
 
+  // causes
+  if (!Array.isArray(d.causes)) return null;
+  const causes: PublicDiagnosis["causes"] = [];
+  const validSeverities = ["critical", "high", "medium"] as const;
+  for (const c of d.causes) {
+    if (typeof c !== "object" || c === null) return null;
+    const cc = c as Record<string, unknown>;
     if (
-      typeof d.url !== "string" ||
-      typeof d.keyword !== "string" ||
-      typeof d.expected_recovery !== "string" ||
-      typeof d.generated_at !== "number" ||
-      !Array.isArray(d.causes) ||
-      !Array.isArray(d.data_gaps) ||
-      typeof d.rank_info !== "object" ||
-      d.rank_info === null
+      typeof cc.severity !== "string" ||
+      !validSeverities.includes(cc.severity as (typeof validSeverities)[number]) ||
+      typeof cc.headline !== "string" ||
+      typeof cc.explanation !== "string" ||
+      typeof cc.fix !== "string"
     ) {
       return null;
     }
+    if (cc.confidence !== undefined && typeof cc.confidence !== "number") return null;
+    causes.push({
+      severity: cc.severity as PublicDiagnosis["causes"][number]["severity"],
+      headline: cc.headline,
+      explanation: cc.explanation,
+      fix: cc.fix,
+      ...(typeof cc.confidence === "number" ? { confidence: cc.confidence } : {}),
+    });
+  }
 
-    // Hand back ONLY the public, validated shape. Private fields stay in the row.
-    return {
-      url: d.url,
-      keyword: d.keyword,
-      rank_info: d.rank_info as
-        | { history_available: true; current_rank: number | null; prior_rank: number; drop: number }
-        | { history_available: false; current_rank: number | null },
-      expected_recovery: d.expected_recovery,
-      causes: d.causes as Array<{
-        severity: "critical" | "high" | "medium";
-        headline: string;
-        explanation: string;
-        fix: string;
-        confidence?: number;
-      }>,
-      data_gaps: d.data_gaps as Array<{
-        source: "serp" | "page_html" | "wayback" | "pagespeed" | "algo_updates";
-        reason: string;
-      }>,
-      generated_at: d.generated_at,
-      share_token: row.shareToken,
-    };
-  },
-});
+  // data_gaps
+  if (!Array.isArray(d.data_gaps)) return null;
+  const data_gaps: PublicDiagnosis["data_gaps"] = [];
+  const validSources = ["serp", "page_html", "wayback", "pagespeed", "algo_updates"] as const;
+  for (const g of d.data_gaps) {
+    if (typeof g !== "object" || g === null) return null;
+    const gg = g as Record<string, unknown>;
+    if (
+      typeof gg.source !== "string" ||
+      !validSources.includes(gg.source as (typeof validSources)[number]) ||
+      typeof gg.reason !== "string"
+    ) {
+      return null;
+    }
+    data_gaps.push({
+      source: gg.source as PublicDiagnosis["data_gaps"][number]["source"],
+      reason: gg.reason,
+    });
+  }
+
+  return {
+    url: d.url,
+    keyword: d.keyword,
+    rank_info,
+    expected_recovery: d.expected_recovery,
+    causes,
+    data_gaps,
+    generated_at: d.generated_at,
+    share_token: shareToken,
+  };
+}
 
 export const listApproved = query({
   args: {},
@@ -274,9 +383,13 @@ export const listApproved = query({
     }),
   ),
   handler: async (ctx) => {
+    // both opted-in AND approved — submitter could have toggled opt-in off
+    // after approval, in which case the row should drop off the public list.
     const rows = await ctx.db
       .query("diagnoses")
-      .withIndex("by_approved", (q) => q.eq("approvedForPublic", true))
+      .withIndex("by_pending", (q) =>
+        q.eq("optedInToExamples", true).eq("approvedForPublic", true),
+      )
       .order("desc")
       .collect();
     return rows.map((r: Doc<"diagnoses">) => ({
@@ -334,8 +447,7 @@ export const getCapStatus = query({
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
     const total = metaRow?.totalSubmissions ?? 0;
-    const cap = 250;
-    return { total, cap, closed: total >= cap };
+    return { total, cap: CAP, closed: total >= CAP };
   },
 });
 

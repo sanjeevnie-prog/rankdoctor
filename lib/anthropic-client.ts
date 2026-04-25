@@ -23,14 +23,3 @@ export function getAnthropic(): Anthropic {
   }
   return _client;
 }
-
-// Convenience export for callers that prefer a value over a function.
-// Lazy via a Proxy so importing this module doesn't blow up on a missing key
-// in environments that don't actually use the brain (e.g. typecheck only).
-export const anthropic: Anthropic = new Proxy({} as Anthropic, {
-  get(_target, prop, receiver) {
-    const real = getAnthropic();
-    const value = Reflect.get(real, prop, receiver);
-    return typeof value === "function" ? value.bind(real) : value;
-  },
-});

@@ -23,9 +23,13 @@ export type WaybackResult =
   | { ok: true; data: WaybackData }
   | { ok: false; reason: string };
 
+// Accepts current page text either as a string OR a promise resolving to one.
+// The promise form lets the orchestrator fire wayback in parallel with the
+// page-html fetcher; wayback only awaits the page just before computing the
+// diff (after its own network work is done), so neither blocks the other.
 export async function fetchWayback(
   url: string,
-  currentNormalizedText?: string,
+  currentNormalizedText?: string | Promise<string | undefined>,
 ): Promise<WaybackResult> {
   try {
     let cdxRows = await cdx(url, 90);
@@ -49,7 +53,8 @@ export async function fetchWayback(
     snapshots.sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
     let textDiff: string | null = null;
-    if (currentNormalizedText && snapshots.length > 0) {
+    const resolvedText = await Promise.resolve(currentNormalizedText);
+    if (resolvedText && snapshots.length > 0) {
       try {
         const newest = snapshots[0];
         const archivedRaw = await fetchArchivedRaw(
@@ -57,7 +62,7 @@ export async function fetchWayback(
           cdxRows.find((r) => r.timestamp === newest.ts)?.original ?? url,
         );
         if (archivedRaw) {
-          textDiff = summarizeDiff(currentNormalizedText, archivedRaw);
+          textDiff = summarizeDiff(resolvedText, archivedRaw);
         }
       } catch {
         // Diff is best-effort. Keep snapshot list even if diff fails.

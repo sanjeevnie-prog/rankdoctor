@@ -16,7 +16,6 @@ export default defineSchema({
     priorRank: v.optional(v.number()),
     // JSON-serialized DiagnosisJson — convex can't store discriminated unions cleanly
     diagnosisJson: v.string(),
-    serpPositionCurrent: v.optional(v.number()),
     pageTextNormalized: v.optional(v.string()),
     waybackTextDiff: v.optional(v.string()),
     pagespeedJson: v.optional(v.string()),

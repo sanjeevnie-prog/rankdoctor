@@ -73,29 +73,27 @@ export async function diagnose(req: DiagnoseRequest): Promise<{
   const cleanUrl = parsedUrl.toString();
   const cleanKeyword = keyword.trim();
 
-  // 2. Fan out — page first so we can pass its normalized text to wayback.
-  // We still parallelize the others alongside.
+  // 2. Fan out — all 4 Node fetchers fire in parallel (true parallel
+  // execution per the scope's flow). Wayback receives a Promise<string|undef>
+  // for the page's normalized text and awaits it only when it's ready to
+  // compute the diff (after its own CDX + archive fetches), so neither
+  // fetcher blocks the other on the main path.
   const pageHtmlPromise = fetchPageHtml(cleanUrl);
-  const pagespeedPromise = fetchPagespeed(cleanUrl);
-  const algoPromise = fetchAlgoUpdates();
-
-  const pageHtml = await pageHtmlPromise.catch(
-    (e: unknown): PageHtmlResult => ({
-      ok: false,
-      reason: `page fetch threw: ${errMsg(e)}`,
-    }),
+  const pageTextPromise: Promise<string | undefined> = pageHtmlPromise.then(
+    (r) => (r.ok ? r.data.normalizedText : undefined),
+    () => undefined,
   );
-  const currentText = pageHtml.ok ? pageHtml.data.normalizedText : undefined;
-  const waybackPromise = fetchWayback(cleanUrl, currentText);
 
   const settled = await Promise.allSettled([
-    pagespeedPromise,
-    algoPromise,
-    waybackPromise,
+    pageHtmlPromise,
+    fetchPagespeed(cleanUrl),
+    fetchAlgoUpdates(),
+    fetchWayback(cleanUrl, pageTextPromise),
   ]);
-  const pagespeed = unwrap<PagespeedResult>(settled[0], "pagespeed");
-  const algoUpdates = unwrap<AlgoUpdatesResult>(settled[1], "algo_updates");
-  const wayback = unwrap<WaybackResult>(settled[2], "wayback");
+  const pageHtml = unwrap<PageHtmlResult>(settled[0], "page_html");
+  const pagespeed = unwrap<PagespeedResult>(settled[1], "pagespeed");
+  const algoUpdates = unwrap<AlgoUpdatesResult>(settled[2], "algo_updates");
+  const wayback = unwrap<WaybackResult>(settled[3], "wayback");
 
   // 3. Build the user message
   const userMessage = buildUserMessage({
@@ -303,23 +301,19 @@ async function runToolLoop(
     lastContent = response.content;
     lastStop = response.stop_reason ?? null;
 
-    if (response.stop_reason === "end_turn") {
-      break;
-    }
     if (response.stop_reason === "pause_turn") {
-      // Server-side tool hit its iteration limit; re-send to resume.
+      // Server-side web_search hit its iteration limit; re-send the assistant
+      // turn to resume. The next API call needs `messages` ending on assistant
+      // for pause_turn — Anthropic resumes the same turn rather than expecting
+      // a user follow-up.
       messages.push({ role: "assistant", content: response.content });
       continue;
     }
-    if (response.stop_reason === "tool_use") {
-      // For web_search (server tool) the server already executed it and the
-      // tool_result is in the same response content. Re-send to let the
-      // model continue reasoning over the result.
-      messages.push({ role: "assistant", content: response.content });
-      continue;
-    }
-    // Anything else (max_tokens, refusal, stop_sequence) — stop and let
-    // the parser try.
+    // end_turn, tool_use, max_tokens, stop_sequence, refusal — natural stop.
+    // tool_use shouldn't fire for server-side web_search; if it does, we
+    // break and let the parser try whatever text we got. (Re-sending an
+    // assistant-only turn for non-pause_turn cases is rejected by some SDK
+    // versions with "last message must be user".)
     break;
   }
 
@@ -390,6 +384,14 @@ function validateDiagnosis(v: unknown): v is DiagnosisJson {
 
   const ri = o.rank_info as Record<string, unknown>;
   if (typeof ri.history_available !== "boolean") return false;
+  // history_available: true requires a numeric prior_rank and a numeric drop.
+  // history_available: false has no extra requirements (current_rank may be
+  // null or number, validated implicitly downstream).
+  if (ri.history_available === true) {
+    if (typeof ri.prior_rank !== "number") return false;
+    if (typeof ri.drop !== "number") return false;
+  }
+  if (ri.current_rank !== null && typeof ri.current_rank !== "number") return false;
 
   for (const c of o.causes) {
     if (!c || typeof c !== "object") return false;
@@ -463,15 +465,12 @@ function fallbackDiagnosis(args: BuildArgs): DiagnosisJson {
     { pageHtml, wayback, pagespeed, algoUpdates },
   );
 
-  const rankInfo =
-    priorRank === undefined || priorRank === null
-      ? { history_available: false as const, current_rank: null }
-      : {
-          history_available: true as const,
-          current_rank: null,
-          prior_rank: priorRank,
-          drop: 0,
-        };
+  // Hardening rule #2: never fabricate drop magnitude. Even when priorRank
+  // was supplied, the fallback path means we don't have a valid current_rank,
+  // so we can't honestly compute a drop. Always declare history_unavailable
+  // here — the user message-level priorRank is preserved separately.
+  void priorRank;
+  const rankInfo = { history_available: false as const, current_rank: null };
 
   return {
     url,

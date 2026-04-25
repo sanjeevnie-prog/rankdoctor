@@ -1,6 +1,15 @@
 import type { DiagnosisJson } from "./types";
 
-export const MOCK_DIAGNOSIS: DiagnosisJson = {
+// Use a getter so `generated_at` reflects the time of access, not module-load.
+// First user of the day would otherwise see a stale timestamp.
+function buildMock(): DiagnosisJson {
+  return {
+    ...MOCK_DIAGNOSIS_BASE,
+    generated_at: Date.now(),
+  };
+}
+
+const MOCK_DIAGNOSIS_BASE: Omit<DiagnosisJson, "generated_at"> = {
   url: "https://example.com/blog/best-running-shoes",
   keyword: "best running shoes",
   rank_info: {
@@ -50,5 +59,22 @@ export const MOCK_DIAGNOSIS: DiagnosisJson = {
       reason: "no wayback snapshot between mar 15 and apr 12, so we can't pinpoint exact date of h1 change.",
     },
   ],
-  generated_at: Date.now(),
 };
+
+// Lazy proxy: every property access returns a freshly-built mock so
+// `MOCK_DIAGNOSIS.generated_at` is always current.
+export const MOCK_DIAGNOSIS: DiagnosisJson = new Proxy({} as DiagnosisJson, {
+  get(_t, prop) {
+    return buildMock()[prop as keyof DiagnosisJson];
+  },
+  ownKeys() {
+    return Object.keys(MOCK_DIAGNOSIS_BASE).concat(["generated_at"]);
+  },
+  getOwnPropertyDescriptor(_t, prop) {
+    return {
+      enumerable: true,
+      configurable: true,
+      value: buildMock()[prop as keyof DiagnosisJson],
+    };
+  },
+});

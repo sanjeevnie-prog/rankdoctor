@@ -14,12 +14,18 @@ export function LoadingState() {
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
-    let i = 0;
-    const id = setInterval(() => {
-      i = Math.min(i + 1, STEPS.length - 1);
-      setActiveIndex(i);
-    }, 4500);
-    return () => clearInterval(id);
+    // 5 steps spread across ~17s so the progress doesn't sprint past
+    // "synthesizing" while the backend is still working (15-30s budget).
+    // Step 0 shows immediately (initial state); steps 1-4 fire on these
+    // delays from mount. If the backend overshoots, the UI parks on the
+    // final step rather than re-cycling.
+    const ADVANCE_AT_MS = [3500, 7000, 11000, 16000];
+    const timers = ADVANCE_AT_MS.map((ms, idx) =>
+      setTimeout(() => setActiveIndex(idx + 1), ms),
+    );
+    return () => {
+      for (const t of timers) clearTimeout(t);
+    };
   }, []);
 
   return (

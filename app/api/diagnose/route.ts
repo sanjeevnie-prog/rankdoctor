@@ -34,6 +34,22 @@ function readCookie(request: Request, name: string): string | null {
   return null;
 }
 
+// HttpOnly so it can't be read by JS; SameSite=Lax for normal navigation;
+// Secure on HTTPS so it never travels over plain HTTP in production.
+function buildCookie(request: Request, cookieId: string): string {
+  const isSecure =
+    new URL(request.url).protocol === "https:" ||
+    request.headers.get("x-forwarded-proto") === "https";
+  return [
+    `${COOKIE_NAME}=${cookieId}`,
+    "Path=/",
+    `Max-Age=${COOKIE_MAX_AGE}`,
+    "HttpOnly",
+    "SameSite=Lax",
+    ...(isSecure ? ["Secure"] : []),
+  ].join("; ");
+}
+
 function badResponse(
   reason: "rate_limited" | "cap_reached" | "internal_error",
   message: string,
@@ -85,50 +101,15 @@ export async function POST(request: Request) {
   let setCookieHeader: string | undefined;
   if (!cookieId) {
     cookieId = randomBytes(16).toString("hex");
-    // HttpOnly so it can't be read by JS; SameSite=Lax for normal navigation.
-    setCookieHeader = `${COOKIE_NAME}=${cookieId}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax`;
+    setCookieHeader = buildCookie(request, cookieId);
   }
   const ipHash = sha256Hex(`${ip}:${cookieId}`);
 
   const convex = new ConvexHttpClient(convexUrl);
 
-  // ---- cap check ----
-  try {
-    const cap = (await convex.query(api.diagnoses.getCapStatus, {})) as {
-      total: number;
-      cap: number;
-      closed: boolean;
-    };
-    if (cap.closed) {
-      return badResponse(
-        "cap_reached",
-        "saturday's beta is closed. drop your email for v2.",
-        200,
-        setCookieHeader,
-      );
-    }
-  } catch (err) {
-    console.error("getCapStatus failed:", err);
-    return badResponse("internal_error", "couldn't reach the diagnostic service.", 502);
-  }
-
-  // ---- rate limit check ----
-  try {
-    const count = (await convex.query(api.diagnoses.countByIpHash, { ipHash })) as number;
-    if (count >= 5) {
-      return badResponse(
-        "rate_limited",
-        "you've used your 5 free diagnoses.",
-        200,
-        setCookieHeader,
-      );
-    }
-  } catch (err) {
-    console.error("countByIpHash failed:", err);
-    return badResponse("internal_error", "couldn't reach the diagnostic service.", 502);
-  }
-
   // ---- run the brain ----
+  // Cap + rate-limit checks happen atomically inside the insert mutation
+  // (Convex is serializable, so concurrent requests can't both pass the gate).
   let diagnosis: DiagnosisJson;
   let raw: Awaited<ReturnType<typeof diagnose>>["raw"];
   try {
@@ -162,7 +143,7 @@ export async function POST(request: Request) {
     }),
   };
 
-  // ---- persist ----
+  // ---- persist (atomic cap + rate-limit gate inside the mutation) ----
   let shareToken: string;
   try {
     const insertResult = (await convex.mutation(api.diagnoses.insert, {
@@ -178,7 +159,17 @@ export async function POST(request: Request) {
       rawClaudeResponse: persistedRaw.rawClaudeResponse,
       optedInToExamples: body.optInToExamples,
       ipHash,
-    })) as { shareToken: string; totalSubmissions: number };
+    })) as
+      | { ok: true; shareToken: string; totalSubmissions: number }
+      | { ok: false; reason: "cap_reached" | "rate_limited" };
+
+    if (!insertResult.ok) {
+      const message =
+        insertResult.reason === "cap_reached"
+          ? "saturday's beta is closed. drop your email for v2."
+          : "you've used your 5 free diagnoses.";
+      return badResponse(insertResult.reason, message, 200, setCookieHeader);
+    }
     shareToken = insertResult.shareToken;
   } catch (err) {
     console.error("diagnoses.insert failed:", err);
