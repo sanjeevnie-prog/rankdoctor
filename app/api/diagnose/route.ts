@@ -193,7 +193,15 @@ export async function POST(request: Request) {
     shareToken = insertResult.shareToken;
   } catch (err) {
     console.error("diagnoses.insert failed:", err);
-    return badResponse("internal_error", "couldn't save the diagnosis.", 502, setCookieHeader);
+    const debugMsg = err instanceof Error ? err.message : String(err);
+    // TEMPORARY: surfacing the real error in production until we identify the
+    // root cause of the convex insert failure. Revert once fixed.
+    return badResponse(
+      "internal_error",
+      `couldn't save the diagnosis. [debug: ${debugMsg.slice(0, 500)}]`,
+      502,
+      setCookieHeader,
+    );
   }
 
   const responseBody: DiagnoseResponse = {
