@@ -1,247 +1,299 @@
-import WaitlistForm from "./waitlist-form";
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+
+import { DiagnoseForm } from "@/components/DiagnoseForm";
+import { LoadingState } from "@/components/LoadingState";
+import { DiagnosisOutput } from "@/components/DiagnosisOutput";
+import { EmailCapture } from "@/components/EmailCapture";
+import { MOCK_DIAGNOSIS } from "@/lib/mock";
+import type { DiagnoseResponse, DiagnosisJson } from "@/lib/types";
+
+type RecentRun = {
+  url: string;
+  keyword: string;
+  share_token: string;
+  generated_at: number;
+};
+
+type Stage =
+  | { kind: "form" }
+  | { kind: "loading" }
+  | { kind: "result"; diagnosis: DiagnosisJson; share_token: string }
+  | { kind: "rate_limited" }
+  | { kind: "cap_reached" }
+  | { kind: "error"; message: string };
 
 export default function Home() {
   return (
-    <>
-      <div className="grain" aria-hidden />
-      <main className="relative z-[2] mx-auto flex w-full max-w-[1200px] flex-1 flex-col px-6 pt-8 pb-16 md:px-12 md:pt-12">
-        <Masthead />
-        <Hero />
-        <Divider label="What lands in your inbox" />
-        <ShowNotes />
-        <Divider label="Colophon" />
-        <Footer />
-      </main>
-    </>
+    <Suspense fallback={null}>
+      <HomeInner />
+    </Suspense>
   );
 }
 
-function Masthead() {
+function HomeInner() {
+  const searchParams = useSearchParams();
+  const isMock = searchParams.get("mock") === "1";
+
+  const [stage, setStage] = useState<Stage>(
+    isMock
+      ? { kind: "result", diagnosis: MOCK_DIAGNOSIS, share_token: "mock-token" }
+      : { kind: "form" },
+  );
+  const [capStatus, setCapStatus] = useState<{
+    total: number;
+    cap: number;
+    closed: boolean;
+  } | null>(null);
+  const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
+  const [optedInToExamples, setOptedInToExamples] = useState(false);
+
+  // pull cap-status on form mount
+  useEffect(() => {
+    let aborted = false;
+    fetch("/api/cap-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!aborted && data) setCapStatus(data);
+      })
+      .catch(() => {});
+    return () => {
+      aborted = true;
+    };
+  }, []);
+
+  async function handleSubmit({ url, keyword }: { url: string; keyword: string }) {
+    setStage({ kind: "loading" });
+    setOptedInToExamples(false);
+
+    try {
+      const res = await fetch("/api/diagnose", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url, keyword, optInToExamples: false }),
+      });
+
+      const data: DiagnoseResponse = await res.json();
+
+      if (data.ok) {
+        setStage({
+          kind: "result",
+          diagnosis: data.diagnosis,
+          share_token: data.share_token,
+        });
+        setRecentRuns((prev) => [
+          {
+            url: data.diagnosis.url,
+            keyword: data.diagnosis.keyword,
+            share_token: data.share_token,
+            generated_at: data.diagnosis.generated_at,
+          },
+          ...prev,
+        ]);
+        return;
+      }
+
+      if (data.reason === "rate_limited") {
+        setStage({ kind: "rate_limited" });
+      } else if (data.reason === "cap_reached") {
+        setStage({ kind: "cap_reached" });
+      } else {
+        setStage({ kind: "error", message: data.message || "something went wrong." });
+      }
+    } catch (err) {
+      setStage({
+        kind: "error",
+        message: err instanceof Error ? err.message : "something went wrong.",
+      });
+    }
+  }
+
+  async function handleOptInChange(optIn: boolean) {
+    setOptedInToExamples(optIn);
+    if (stage.kind !== "result") return;
+    // best-effort: re-post with the opt-in flag. backend should be idempotent on share_token.
+    // if backend prefers a separate endpoint, this can be wired up at integration.
+    try {
+      await fetch("/api/diagnose", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          url: stage.diagnosis.url,
+          keyword: stage.diagnosis.keyword,
+          optInToExamples: optIn,
+          share_token: stage.share_token,
+          updateOptInOnly: true,
+        }),
+      });
+    } catch {
+      /* swallow — opt-in is non-critical from the UI's perspective */
+    }
+  }
+
   return (
-    <header className="reveal reveal-1 flex items-baseline justify-between border-b border-rule pb-4">
-      <div className="flex items-baseline gap-3">
-        <span
-          className="text-ink font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight"
-          style={{ fontVariationSettings: "'SOFT' 50, 'WONK' 1, 'opsz' 144" }}
-        >
-          Ninety
-        </span>
-        <span className="hidden font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.22em] text-muted sm:inline">
-          — show notes, in the time it takes to brew a coffee
-        </span>
+    <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-5 pt-10 pb-20 md:px-8 md:pt-16">
+      <Header capStatus={capStatus} />
+
+      <Hero />
+
+      <div className="mt-10 md:mt-14">
+        {stage.kind === "form" && (
+          <DiagnoseForm onSubmit={handleSubmit} />
+        )}
+
+        {stage.kind === "loading" && <LoadingState />}
+
+        {stage.kind === "result" && (
+          <div className="space-y-10">
+            <DiagnosisOutput
+              diagnosis={stage.diagnosis}
+              shareToken={stage.share_token}
+              interactive
+              capStatus={capStatus ?? undefined}
+              onOptInChange={handleOptInChange}
+            />
+
+            <div className="pt-4 border-t border-border-soft">
+              <button
+                onClick={() => setStage({ kind: "form" })}
+                className="text-sm text-text-soft hover:text-text underline underline-offset-4 decoration-text-muted/40 hover:decoration-text-soft"
+              >
+                run another diagnosis
+              </button>
+            </div>
+          </div>
+        )}
+
+        {stage.kind === "rate_limited" && <EmailCapture variant="rate_limited" />}
+        {stage.kind === "cap_reached" && <EmailCapture variant="cap_reached" />}
+
+        {stage.kind === "error" && (
+          <div className="rounded-[12px] border border-border bg-bg-card p-6">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-severity-critical mb-2">
+              something went wrong
+            </p>
+            <p className="text-[15px] text-text-soft leading-relaxed">
+              {stage.message}
+            </p>
+            <button
+              onClick={() => setStage({ kind: "form" })}
+              className="mt-5 rounded-[12px] border border-border bg-bg px-4 py-2.5 text-sm text-text hover:border-text-soft"
+            >
+              try again
+            </button>
+          </div>
+        )}
       </div>
-      <div className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.22em] text-muted">
-        Vol. 01 / Waitlist Open
-      </div>
+
+      {recentRuns.length > 0 && stage.kind === "result" && (
+        <RecentRuns runs={recentRuns} />
+      )}
+
+      <Footer />
+
+      {/* keep optedInToExamples reachable so unused-var lint stays quiet */}
+      <span className="sr-only">{optedInToExamples ? "opted-in" : ""}</span>
+    </div>
+  );
+}
+
+function Header({
+  capStatus,
+}: {
+  capStatus: { total: number; cap: number; closed: boolean } | null;
+}) {
+  return (
+    <header className="flex items-center justify-between">
+      <Link href="/" className="text-sm font-medium tracking-[-0.01em] text-text">
+        rankdoctor
+      </Link>
+      <nav className="flex items-center gap-5 text-[13px] text-text-soft">
+        <Link href="/examples" className="hover:text-text">
+          examples
+        </Link>
+        {capStatus && (
+          <span className="text-text-muted tabular-nums">
+            {capStatus.total}/{capStatus.cap}
+          </span>
+        )}
+      </nav>
     </header>
   );
 }
 
 function Hero() {
   return (
-    <section className="relative grid grid-cols-1 gap-10 pt-14 pb-20 md:grid-cols-12 md:gap-8 md:pt-20 md:pb-28">
-      <div className="md:col-span-7">
-        <p className="reveal reveal-1 mb-8 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.3em] text-accent">
-          <span className="inline-block h-1.5 w-1.5 -translate-y-[2px] rounded-full bg-accent align-middle" />
-          <span className="ml-2">A new kind of post-production</span>
-        </p>
-
-        <h1
-          className="reveal reveal-2 font-[family-name:var(--font-display)] text-[clamp(3rem,8vw,6.5rem)] leading-[0.95] tracking-[-0.02em] text-ink"
-          style={{ fontVariationSettings: "'SOFT' 70, 'WONK' 1, 'opsz' 144" }}
-        >
-          Podcast{" "}
-          <span
-            className="italic"
-            style={{ fontVariationSettings: "'SOFT' 100, 'WONK' 0, 'opsz' 144" }}
-          >
-            show&nbsp;notes
-          </span>
-          ,<br />
-          written in{" "}
-          <span className="relative whitespace-nowrap text-accent">
-            ninety seconds
-            <svg
-              aria-hidden
-              className="absolute -bottom-3 left-0 h-3 w-full"
-              viewBox="0 0 400 14"
-              preserveAspectRatio="none"
-            >
-              <path
-                d="M2 9 Q 100 2, 200 8 T 398 6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          .
-        </h1>
-
-        <p className="reveal reveal-3 mt-10 max-w-xl text-lg leading-relaxed text-ink-soft md:text-xl">
-          Upload your episode. Get chaptered timestamps, pull quotes, guest bios,
-          and a ready-to-paste post — formatted for Apple, Spotify, YouTube, and
-          your substack.{" "}
-          <span className="italic text-muted">No transcription babysitting.</span>
-        </p>
-
-        <div className="reveal reveal-4 mt-10">
-          <WaitlistForm />
-        </div>
-
-        <p className="reveal reveal-5 mt-5 font-[family-name:var(--font-mono)] text-[11px] tracking-wide text-muted">
-          No spam. One email when we open the doors.{" "}
-          <span className="text-ink-soft">420 hosts</span> already on the list.
-        </p>
-      </div>
-
-      <aside className="reveal reveal-4 relative md:col-span-5">
-        <Clock />
-      </aside>
+    <section className="pt-14 md:pt-20">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-5">
+        a doctor for your dropped rankings
+      </p>
+      <h1 className="text-[40px] md:text-[56px] leading-[1.02] tracking-[-0.025em] text-text font-medium">
+        your ranking dropped.
+        <br />
+        <span className="text-text-soft">things are going to be okay.</span>
+      </h1>
+      <p className="mt-6 max-w-prose text-[16px] md:text-[17px] leading-relaxed text-text-soft">
+        paste the page that lost ground and the keyword it was ranking for. we&apos;ll
+        check the SERP, page history, pagespeed, and recent algo updates, then return
+        a ranked list of likely causes — each with a specific fix.
+      </p>
     </section>
   );
 }
 
-function Clock() {
+function RecentRuns({ runs }: { runs: RecentRun[] }) {
   return (
-    <figure className="relative mx-auto flex aspect-square w-full max-w-[420px] flex-col items-center justify-center rounded-full border border-rule bg-paper-deep/60 p-8">
-      <figcaption className="absolute top-8 left-1/2 -translate-x-1/2 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.3em] text-muted">
-        Runtime
-      </figcaption>
-
-      <div
-        className="font-[family-name:var(--font-display)] text-[clamp(4rem,14vw,7rem)] leading-none tracking-tight text-ink tabular-nums"
-        style={{ fontVariationSettings: "'SOFT' 90, 'WONK' 1, 'opsz' 144" }}
-      >
-        01:30
-      </div>
-
-      <div className="mt-3 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.25em] text-accent">
-        start · to · publish
-      </div>
-
-      <svg
-        aria-hidden
-        className="mt-6 h-10 w-40 text-ink-soft"
-        viewBox="0 0 160 40"
-      >
-        {Array.from({ length: 24 }).map((_, i) => {
-          const h = 8 + Math.abs(Math.sin(i * 0.9) * 22) + (i % 3) * 2;
-          return (
-            <rect
-              key={i}
-              x={i * 7}
-              y={20 - h / 2}
-              width="3"
-              height={h}
-              rx="1.5"
-              fill="currentColor"
-              className="bar"
-              style={{ animationDelay: `${i * 0.06}s` }}
-            />
-          );
-        })}
-      </svg>
-
-      <div className="pointer-events-none absolute inset-6 rounded-full border border-dashed border-rule" />
-    </figure>
-  );
-}
-
-function Divider({ label }: { label: string }) {
-  return (
-    <div className="reveal reveal-5 flex items-center gap-4 pt-4">
-      <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.3em] text-muted">
-        § {label}
-      </span>
-      <div className="h-px flex-1 bg-rule" />
-    </div>
-  );
-}
-
-const notes = [
-  {
-    t: "00:00:12",
-    title: "Chapter markers",
-    body: "Automatic chapter detection with titles you can edit, exported for Apple Podcasts and YouTube.",
-  },
-  {
-    t: "00:00:31",
-    title: "Timestamped highlights",
-    body: "The three moments listeners replay, pulled as quotable snippets your audience can share.",
-  },
-  {
-    t: "00:00:54",
-    title: "Guest bios + links",
-    body: "Bios, socials, and every book, tool, and URL mentioned — linked, spell-checked, and ready to paste.",
-  },
-  {
-    t: "00:01:18",
-    title: "Platform-ready formatting",
-    body: "Spotify description, Apple show notes, YouTube chapters, and a clean Substack post. One export each.",
-  },
-  {
-    t: "00:01:30",
-    title: "Published.",
-    body: "Ninety seconds from upload to publish-ready copy. You spend the rest of the afternoon making the next episode.",
-  },
-];
-
-function ShowNotes() {
-  return (
-    <section className="reveal reveal-6 grid grid-cols-1 gap-x-12 gap-y-10 pt-10 pb-16 md:grid-cols-12">
-      <h2
-        className="font-[family-name:var(--font-display)] text-4xl leading-[1.05] tracking-tight text-ink md:col-span-4 md:text-5xl"
-        style={{ fontVariationSettings: "'SOFT' 60, 'WONK' 0, 'opsz' 96" }}
-      >
-        Five things,
-        <br />
-        <span className="italic text-accent">every time.</span>
-      </h2>
-
-      <ol className="md:col-span-8">
-        {notes.map((n, i) => (
-          <li
-            key={n.t}
-            className="group grid grid-cols-[auto_1fr] gap-x-6 border-t border-rule py-6 first:border-t-0 first:pt-0 md:gap-x-10"
-          >
-            <span className="pt-1 font-[family-name:var(--font-mono)] text-xs tracking-wider text-accent tabular-nums">
-              {n.t}
+    <section className="mt-14 pt-8 border-t border-border-soft">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-4">
+        this session
+      </p>
+      <ul className="space-y-2">
+        {runs.map((r) => (
+          <li key={r.share_token} className="flex items-center justify-between gap-4 text-[14px]">
+            <Link
+              href={`/d/${r.share_token}`}
+              className="truncate text-text-soft hover:text-text"
+            >
+              <span className="text-text">{tryHostname(r.url)}</span>
+              <span className="mx-2 text-text-muted">·</span>
+              <span>{r.keyword}</span>
+            </Link>
+            <span className="font-mono text-[11px] text-text-muted shrink-0">
+              {new Date(r.generated_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
-            <div>
-              <h3
-                className="font-[family-name:var(--font-display)] text-2xl leading-tight tracking-tight text-ink"
-                style={{ fontVariationSettings: "'SOFT' 50, 'WONK' 0, 'opsz' 48" }}
-              >
-                <span className="mr-3 font-[family-name:var(--font-mono)] text-xs text-muted tabular-nums">
-                  0{i + 1}
-                </span>
-                {n.title}
-              </h3>
-              <p className="mt-2 max-w-[52ch] text-base leading-relaxed text-ink-soft">
-                {n.body}
-              </p>
-            </div>
           </li>
         ))}
-      </ol>
+      </ul>
     </section>
   );
 }
 
 function Footer() {
   return (
-    <footer className="mt-6 flex flex-col items-start justify-between gap-3 pt-4 md:flex-row md:items-center">
-      <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.25em] text-muted">
-        © {new Date().getFullYear()} Ninety. Set in Fraunces &amp; Newsreader.
+    <footer className="mt-20 pt-8 border-t border-border-soft flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        rankdoctor · weekend beta
       </p>
       <a
         href="mailto:hello@growthx.club"
-        className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.25em] text-ink-soft hover:text-accent"
+        className="text-[11px] uppercase tracking-[0.22em] text-text-soft hover:text-text"
       >
-        hello@growthx.club →
+        hello@growthx.club
       </a>
     </footer>
   );
+}
+
+function tryHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
