@@ -102,6 +102,31 @@ export const insert = mutation({
   },
 });
 
+// option B opt-in flow: user ticks the checkbox AFTER seeing the diagnosis.
+// frontend POSTs /api/diagnose-optin with { share_token, optedIn }, which calls this.
+// idempotent — calling with the same value is a no-op.
+export const setOptIn = mutation({
+  args: {
+    shareToken: v.string(),
+    optedIn: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { shareToken, optedIn }) => {
+    const row = await ctx.db
+      .query("diagnoses")
+      .withIndex("by_share_token", (q) => q.eq("shareToken", shareToken))
+      .unique();
+    if (row === null) {
+      // never leak existence; silently accept
+      return null;
+    }
+    if (row.optedInToExamples !== optedIn) {
+      await ctx.db.patch(row._id, { optedInToExamples: optedIn });
+    }
+    return null;
+  },
+});
+
 export const approve = mutation({
   args: {
     id: v.id("diagnoses"),

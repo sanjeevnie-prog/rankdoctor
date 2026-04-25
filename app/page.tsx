@@ -114,22 +114,19 @@ function HomeInner() {
   async function handleOptInChange(optIn: boolean) {
     setOptedInToExamples(optIn);
     if (stage.kind !== "result") return;
-    // best-effort: re-post with the opt-in flag. backend should be idempotent on share_token.
-    // if backend prefers a separate endpoint, this can be wired up at integration.
+    // option B opt-in flow: dedicated endpoint flips the row's optedInToExamples flag.
+    // best-effort — opt-in is non-critical to the UI; we don't surface failure.
     try {
-      await fetch("/api/diagnose", {
+      await fetch("/api/diagnose-optin", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          url: stage.diagnosis.url,
-          keyword: stage.diagnosis.keyword,
-          optInToExamples: optIn,
           share_token: stage.share_token,
-          updateOptInOnly: true,
+          optedIn: optIn,
         }),
       });
     } catch {
-      /* swallow — opt-in is non-critical from the UI's perspective */
+      /* swallow */
     }
   }
 
