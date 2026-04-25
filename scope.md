@@ -54,8 +54,9 @@ diagnosis rendered as linear-style dark cards. one card per diagnosed cause, ran
 - no illustrations, no icons beyond severity dots
 
 ### post-diagnosis
-- **share button** — "tweet this diagnosis" opens twitter intent with prefilled text + link to a public diagnosis page at `/d/{share_token}`.
-- **opt-in to examples** — small checkbox above the share button: "ok to feature this in our public examples list (i'll be credited as the submitter)." default unchecked.
+- **share card preview (locked 2026-04-25)** — below the multi-card diagnosis, render a single-card summary (rank drop hero + site + keyword + top finding headline + brand mark). this is exactly what twitter / slack / imessage will show as the link preview. user sees what's about to be shared before they share it.
+- **share button** — "tweet this diagnosis" opens twitter intent with prefilled text + link to `/d/{share_token}`. the OG/twitter-card image at that URL is the same single-card design as the on-screen preview (one source of truth — `app/d/[token]/opengraph-image.tsx` generates it on the fly).
+- **opt-in to examples (locked 2026-04-25 — option B flow)** — checkbox shown AFTER the diagnosis renders, not before. user reads their actual diagnosis, then decides if they're happy to publish. ticking it fires a SECOND POST to `/api/diagnose-optin` with `{ share_token, optedIn: true }`. the initial `/api/diagnose` always sends `optIn: false`. default unchecked. reason: better consent + more opt-ins = richer examples bank for v2 funnel.
 - **beta status** — small text under the cards: "{N}/250 free diagnoses used this weekend."
 
 ## user journey 2 — return visit (rate-limited)
@@ -133,3 +134,74 @@ intent: serves as the case-study bank that shows the product works on real sites
 
 **if POC passes:** lock the prompt, proceed to build.
 **if POC fails:** sharpen prompt until output is razor-sharp, or kill the idea.
+
+## POC results (run on 2026-04-25)
+
+ran 3 rounds inside claude code (not chat) using built-in web search + curl + wayback CDX:
+
+| round | site | keyword | top finding |
+|---|---|---|---|
+| 1 | growthx.club | AI courses india | not in top 10; intent mismatch + march update timing + canonical/og:url bug |
+| 2 | semrush.com | SEO/AEO/GEO | homepage doesn't compete for category-defining new terms; near-shipped a false "title empty" finding (caught) |
+| 3 | serpstat.com | seo tool | not in top 10; canonical/og:url bug recurs; CDX showed content change 1 day before march spam update |
+
+three failure modes surfaced → became the prompt's hardening rules (next section).
+
+three recurring patterns surfaced (all 3 sites):
+- page intent ≠ keyword intent on listicle-dominated SERPs (3/3)
+- recent (≤90 days) google core update timing pressure (3/3)
+- canonical/og:url mismatch in `<head>` (2/3)
+- generic H1 not echoing target keyword (3/3)
+
+## locked decisions
+
+- **model:** Claude Sonnet 4.6 (`claude-sonnet-4-6`). Haiku 4.5 deferred — quality > $7/wk savings.
+- **SERP source:** Anthropic `web_search` server tool (~$0.01/diagnosis). No SerpAPI / DataForSEO for v1.
+- **drop framing:** path B — "doctor for your dropped rankings" hook + optional user-supplied "prior rank" form field. No automatic rank tracking in v1.
+- **wayback API:** CDX is primary (`web.archive.org/cdx/search/cdx?...`). The `/wayback/available?` endpoint was unreliable in POC.
+- **prompt caching:** required on system prompt (`cache_control: ephemeral`).
+- **rate limit:** 5 diagnoses per ip_hash for the weekend beta (no time window — total count).
+- **cap:** 250 total diagnoses. After 250: form replaced with email capture for v2.
+- **anthropic spend cap:** $20 hard ceiling, set in console (~$1-5 expected, $20 worst case for viral).
+- **demo source for waitlist page:** semrush.com — but block deferred until brain validates on a fresh case study.
+- **opt-in flow (locked 2026-04-25):** option B — checkbox AFTER the diagnosis renders. second POST to `/api/diagnose-optin` flips `optedInToExamples` on the existing row. reason: user opts in once they see what they're publishing.
+- **share-page data privacy (locked 2026-04-25):** option A — `getByShareToken` Convex query returns ONLY public fields (url, keyword, diagnosisJson, shareToken, optedInToExamples, approvedForPublic, createdAt). Private fields (ipHash, rawClaudeResponse, raw fetcher dumps) physically don't leave the database, so they can't leak via `/d/{token}` page source, dev tools, or future export bugs.
+- **share card (locked 2026-04-25):** single-card summary, generated on the fly per diagnosis. one source of truth — same image is shown to the user on the result screen as a preview AND served as the OG/twitter-card preview when the URL is shared. file: `app/d/[token]/opengraph-image.tsx` (Next.js built-in ImageResponse, no extra deps). diagnosis output itself stays multi-card (severity ranked) per scope above — single-card is share surface only.
+- **waitlist visual unity (locked 2026-04-25):** all three "drop your email" surfaces (`/waitlist` route, rate-limited inline, cap-reached inline) use the same `EmailCapture` component and visual style. backend already unifies them on the `waitlistV2` Convex table with a `source` field ("waitlist_page" | "rate_limited" | "cap_reached").
+
+## hardening rules (must be in the locked system prompt)
+
+three rules baked into `lib/prompts/diagnosis-system.ts`:
+
+1. **re-read before claiming** — when citing HTML structure (e.g., "title is empty"), parse multi-line content carefully. round 2 near-shipped a false finding because a single-line regex missed content on the next line. use proper HTML parsing, not single-line greps.
+2. **no fake drop magnitude** — if `priorRank` is null/undefined, do NOT generate "X → Y" hero. output `{ current_rank, history_available: false }`. never invent before/after numbers.
+3. **graceful degradation per data source** — if any of the 5 fetchers errors or returns empty, the diagnosis explicitly notes the gap (e.g., "PageSpeed quota exhausted; CWV unmeasured this run"). do NOT hallucinate values for missing data.
+
+## build plan — 4 parallel agents with strict file ownership
+
+| agent | files owned |
+|---|---|
+| **frontend** | `app/page.tsx` (replaces ninety waitlist), `app/d/[token]/page.tsx`, `app/examples/page.tsx`, `app/admin/queue/page.tsx`, `components/*.tsx`, `app/globals.css` |
+| **backend** | `convex/schema.ts` (extend), `convex/diagnoses.ts` (new), `app/api/diagnose/route.ts`, `app/api/admin/approve/route.ts`, `app/api/cap-status/route.ts`, `lib/types.ts` (DiagnosisJson source-of-truth), `.env.example` |
+| **brain** | `lib/diagnose.ts`, `lib/fetchers/{page-html,wayback,pagespeed,algo-updates,serp}.ts`, `lib/prompts/diagnosis-system.ts`, `lib/anthropic-client.ts`, `scripts/test-brain.ts`, `package.json` (deps + scripts) |
+| **waitlist** | `app/waitlist/page.tsx` only (NO demo block — deferred until brain validation) |
+
+shared contracts:
+- `lib/types.ts` — `DiagnosisJson` type. Backend creates; frontend + brain import. Backend owns; nobody else modifies.
+- `lib/diagnose.ts` — `async function diagnose({url, keyword, priorRank?}): Promise<DiagnosisJson>`. Brain creates; backend imports and calls from `/api/diagnose`.
+- convex queries: `getByShareToken`, `listApproved`, `listPendingApproval`, `getCapStatus`. Backend creates; frontend reads.
+
+## current status snapshot (2026-04-25)
+
+- ✅ scope.md, weekender.md, handbook all in place
+- ✅ git repo initialized (`git log` → initial commit `48140f4`)
+- ✅ POC run 3 times (rounds 1-3 above)
+- ✅ all decisions locked (above)
+- ✅ **4 build agents shipped** in isolated git worktrees (frontend, backend, brain, waitlist). Each branch sits in `.claude/worktrees/agent-*` ready to merge.
+- ✅ cross-cutting decisions resolved (option A, option B, OG share card, waitlist unity, .gitignore fix, frontend lib helpers kept, font swap to geist kept)
+- ⏳ integration: merging 4 worktrees onto main, applying option A + option B + OG card patches, running typecheck
+- ⏳ 3 review subagents (per build-process memory) → fix findings → second review pass
+- ⏳ user to provide: ANTHROPIC_API_KEY, PAGESPEED_API_KEY, ADMIN_KEY in `.env.local` (will be requested explicitly when needed — before `npm run brain` or local dev server)
+- ⏳ round 4 brain validation: `npm run brain -- "<url>" "<keyword>"` against a fresh case study URL. user runs after integration + review passes.
+- ⏳ demo block on `/waitlist`: deferred until round 4 passes
+- ⏳ vercel deploy: deferred until round 4 passes
