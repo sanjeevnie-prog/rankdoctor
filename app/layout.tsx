@@ -1,30 +1,21 @@
 import type { Metadata } from "next";
-import { Fraunces, Newsreader, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const fraunces = Fraunces({
-  variable: "--font-display",
+const geist = Geist({
+  variable: "--font-sans",
   subsets: ["latin"],
-  axes: ["SOFT", "WONK", "opsz"],
 });
 
-const newsreader = Newsreader({
-  variable: "--font-body",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  weight: ["400", "500", "600"],
-});
-
-const mono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["400", "500"],
 });
 
 export const metadata: Metadata = {
-  title: "Ninety — podcast show notes in 90 seconds",
+  title: "rankdoctor — a doctor for your dropped rankings",
   description:
-    "Upload your episode. Get chaptered, timestamped, publish-ready show notes in ninety seconds.",
+    "paste a URL and target keyword. get a ranked diagnosis of why your SEO position dropped, in about 30 seconds.",
 };
 
 export default function RootLayout({
@@ -35,9 +26,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${newsreader.variable} ${mono.variable} h-full antialiased`}
+      className={`${geist.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full bg-bg text-text flex flex-col">{children}</body>
     </html>
   );
 }
