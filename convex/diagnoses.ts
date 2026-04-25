@@ -78,10 +78,16 @@ export const insert = mutation({
   ),
   handler: async (ctx, args) => {
     // ---- atomic cap check ----
+    // Use .first() (not .unique()) so a duplicate meta row from a vanishingly
+    // rare first-write race never crashes the query. Order by _creationTime
+    // so the oldest row is always the canonical counter — subsequent runs
+    // converge on it and any stray dup is harmless (worst case: counter is
+    // off by ≤2 across the whole beta).
     const metaRow = await ctx.db
       .query("meta")
       .withIndex("by_key", (q) => q.eq("key", "global"))
-      .unique();
+      .order("asc")
+      .first();
     const total = metaRow?.totalSubmissions ?? 0;
     if (total >= CAP) {
       return { ok: false as const, reason: "cap_reached" as const };
@@ -193,7 +199,7 @@ export const getByShareToken = query({
           history_available: v.literal(true),
           current_rank: v.union(v.number(), v.null()),
           prior_rank: v.number(),
-          drop: v.number(),
+          drop: v.union(v.number(), v.null()),
         }),
         v.object({
           history_available: v.literal(false),
@@ -241,9 +247,16 @@ export const getByShareToken = query({
     try {
       parsed = JSON.parse(row.diagnosisJson);
     } catch {
+      console.warn(`getByShareToken: malformed diagnosisJson for ${token}`);
       return null;
     }
-    return validatePublicDiagnosis(parsed, row.shareToken);
+    const validated = validatePublicDiagnosis(parsed, row.shareToken);
+    if (validated === null) {
+      // 404s on /d/{token} are otherwise indistinguishable from "row missing"
+      // — log so we can tell when the validator dropped a row vs. a real miss.
+      console.warn(`getByShareToken: diagnosis failed shape validation for ${token}`);
+    }
+    return validated;
   },
 });
 
@@ -255,7 +268,7 @@ type PublicDiagnosis = {
   url: string;
   keyword: string;
   rank_info:
-    | { history_available: true; current_rank: number | null; prior_rank: number; drop: number }
+    | { history_available: true; current_rank: number | null; prior_rank: number; drop: number | null }
     | { history_available: false; current_rank: number | null };
   expected_recovery: string;
   causes: Array<{
@@ -296,13 +309,14 @@ function validatePublicDiagnosis(
   let rank_info: PublicDiagnosis["rank_info"];
   if (rir.history_available === true) {
     if (typeof rir.prior_rank !== "number") return null;
-    if (typeof rir.drop !== "number") return null;
+    // drop may be null when current_rank is null
+    if (rir.drop !== null && typeof rir.drop !== "number") return null;
     if (rir.current_rank !== null && typeof rir.current_rank !== "number") return null;
     rank_info = {
       history_available: true,
       current_rank: rir.current_rank as number | null,
       prior_rank: rir.prior_rank,
-      drop: rir.drop,
+      drop: rir.drop as number | null,
     };
   } else if (rir.history_available === false) {
     if (rir.current_rank !== null && typeof rir.current_rank !== "number") return null;
@@ -442,10 +456,16 @@ export const getCapStatus = query({
     closed: v.boolean(),
   }),
   handler: async (ctx) => {
+    // Use .first() (not .unique()) so a duplicate meta row from a vanishingly
+    // rare first-write race never crashes the query. Order by _creationTime
+    // so the oldest row is always the canonical counter — subsequent runs
+    // converge on it and any stray dup is harmless (worst case: counter is
+    // off by ≤2 across the whole beta).
     const metaRow = await ctx.db
       .query("meta")
       .withIndex("by_key", (q) => q.eq("key", "global"))
-      .unique();
+      .order("asc")
+      .first();
     const total = metaRow?.totalSubmissions ?? 0;
     return { total, cap: CAP, closed: total >= CAP };
   },

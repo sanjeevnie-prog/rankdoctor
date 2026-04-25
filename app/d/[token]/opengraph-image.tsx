@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import type { DiagnosisJson } from "@/lib/types";
+import type { PublicDiagnosis } from "@/lib/types";
 import { deriveShareCardFields, type ShareCardFields } from "@/lib/share-card";
 
 // OG / twitter-card image for /d/{token}.
@@ -22,7 +22,7 @@ async function loadCardData(token: string): Promise<CardData> {
   try {
     const convex = new ConvexHttpClient(convexUrl);
     const row = (await convex.query(api.diagnoses.getByShareToken, { token })) as
-      | (DiagnosisJson & { share_token: string })
+      | PublicDiagnosis
       | null;
     if (!row) return { ok: false };
     return { ok: true, ...deriveShareCardFields(row) };

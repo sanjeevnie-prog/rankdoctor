@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "rankdoctor — a doctor for your dropped rankings",
+  title: "Rankdoctor — ER for crashed rankings",
   description:
-    "paste a URL and target keyword. get a ranked diagnosis of why your SEO position dropped, in about 30 seconds.",
+    "Paste a URL and target keyword. Get a ranked diagnosis of why your SEO position dropped, in about 30 seconds.",
 };
 
 export default function RootLayout({

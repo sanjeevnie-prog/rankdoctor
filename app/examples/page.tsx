@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PillNav } from "@/components/PillNav";
 import { getConvex } from "@/lib/convexServer";
 
 export const dynamic = "force-dynamic";
@@ -39,40 +40,31 @@ export default async function ExamplesPage() {
   const rows = await fetchApproved();
 
   return (
-    <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-5 pt-10 pb-20 md:px-8 md:pt-16">
-      <header className="flex items-center justify-between">
-        <Link
-          href="/"
-          className="text-sm font-medium tracking-[-0.01em] text-text"
-        >
-          rankdoctor
-        </Link>
-        <Link
-          href="/"
-          className="text-[13px] text-text-soft hover:text-text"
-        >
-          run a diagnosis
-        </Link>
-      </header>
+    <div className="min-h-screen bg-bg text-text">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-6 pt-6 pb-12 md:px-10 md:pt-8">
+        <PillNav />
 
-      <section className="pt-12 md:pt-16">
-        <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-3">
-          examples
-        </p>
-        <h1 className="text-[36px] md:text-[44px] leading-[1.05] tracking-[-0.02em] text-text font-medium">
-          real diagnoses on real pages.
-        </h1>
-        <p className="mt-5 max-w-prose text-[16px] leading-relaxed text-text-soft">
-          each entry was opted in by the submitter and approved by us. click any row
-          to read the full diagnosis.
-        </p>
-      </section>
+        <div className="mx-auto w-full max-w-[820px] flex-1 mt-12 md:mt-16">
+          <section>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-3">
+              Examples
+            </p>
+            <h1 className="font-bold tracking-[-0.04em] leading-[1] text-[44px] md:text-[64px] lg:text-[80px] text-text">
+              Real diagnoses.
+              <br />
+              <span className="text-text-soft">Real pages.</span>
+            </h1>
+            <p className="mt-6 max-w-prose text-[16px] md:text-[17px] leading-[1.5] text-text-soft">
+              Each entry was opted in by the submitter and approved by us. Click any row
+              to read the full diagnosis.
+            </p>
+          </section>
 
-      <div className="mt-10">
+          <div className="mt-10">
         {rows.length === 0 ? (
           <div className="rounded-[12px] border border-border bg-bg-card p-6 md:p-8">
             <p className="text-[15px] text-text-soft leading-relaxed">
-              no approved examples yet. check back after the weekend beta.
+              No approved examples yet. Check back after the weekend beta.
             </p>
           </div>
         ) : (
@@ -101,11 +93,20 @@ export default async function ExamplesPage() {
         )}
       </div>
 
-      <footer className="mt-20 pt-8 border-t border-border-soft">
-        <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-          rankdoctor · weekend beta
-        </p>
-      </footer>
+        </div>
+
+        <footer className="mt-20 pt-8 border-t border-border-soft mx-auto w-full max-w-[820px] flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
+            Rankdoctor · weekend beta
+          </p>
+          <Link
+            href="/"
+            className="text-[13px] text-text-soft hover:text-text underline-offset-4 hover:underline"
+          >
+            Run your own diagnosis →
+          </Link>
+        </footer>
+      </div>
     </div>
   );
 }

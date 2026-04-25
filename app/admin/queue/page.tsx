@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ConvexHttpClient } from "convex/browser";
 
+import { PillNav } from "@/components/PillNav";
+
 type PendingRow = {
   _id: string;
   url: string;
@@ -28,16 +30,21 @@ function Inner() {
 
   if (!key) {
     return (
-      <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col px-5 pt-20 pb-20 md:px-8">
-        <p className="text-[11px] uppercase tracking-[0.22em] text-severity-critical mb-3">
-          unauthorized
-        </p>
-        <h1 className="text-[28px] tracking-[-0.02em] text-text font-medium">
-          this page needs a key.
-        </h1>
-        <p className="mt-3 text-[15px] text-text-soft">
-          append <code className="font-mono text-text">?key=...</code> to the URL.
-        </p>
+      <div className="min-h-screen bg-bg text-text">
+        <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-6 pt-6 pb-12 md:px-10 md:pt-8">
+          <PillNav rightLabel="admin · queue" />
+          <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col items-center justify-center text-center">
+            <p className="text-[11px] uppercase tracking-[0.22em] text-severity-critical mb-3">
+              Unauthorized
+            </p>
+            <h1 className="text-[36px] md:text-[44px] tracking-[-0.03em] leading-[1.05] text-text font-bold">
+              This page needs a key.
+            </h1>
+            <p className="mt-4 text-[15px] text-text-soft">
+              Append <code className="font-mono text-text">?key=...</code> to the URL.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -103,41 +110,39 @@ function Queue({ adminKey }: { adminKey: string }) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-5 pt-10 pb-20 md:px-8 md:pt-16">
-      <header className="flex items-center justify-between">
-        <Link href="/" className="text-sm font-medium tracking-[-0.01em] text-text">
-          rankdoctor
-        </Link>
-        <span className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-          admin · queue
-        </span>
-      </header>
+    <div className="min-h-screen bg-bg text-text">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-6 pt-6 pb-12 md:px-10 md:pt-8">
+        <PillNav rightLabel="admin · queue" />
 
-      <section className="pt-12 md:pt-16">
-        <h1 className="text-[28px] md:text-[34px] leading-[1.1] tracking-[-0.02em] text-text font-medium">
-          pending opt-ins.
-        </h1>
-        <p className="mt-3 text-[14px] text-text-soft">
-          submitter checked the box. approve to publish to /examples.
-        </p>
-      </section>
+        <div className="mx-auto w-full max-w-[820px] flex-1 mt-12 md:mt-16">
+          <section>
+            <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-3">
+              Admin
+            </p>
+            <h1 className="font-bold tracking-[-0.04em] leading-[1] text-[40px] md:text-[56px] text-text">
+              Pending opt-ins.
+            </h1>
+            <p className="mt-4 text-[15px] text-text-soft">
+              Submitter checked the box. Approve to publish to /examples.
+            </p>
+          </section>
 
-      <div className="mt-10 space-y-3">
+          <div className="mt-10 space-y-3">
         {error && (
           <div className="rounded-[12px] border border-border bg-bg-card p-5">
             <p className="text-[11px] uppercase tracking-[0.22em] text-severity-critical mb-2">
-              error
+              Error
             </p>
             <p className="text-[14px] text-text-soft">{error}</p>
           </div>
         )}
 
         {rows === null && !error && (
-          <p className="text-[14px] text-text-muted">loading…</p>
+          <p className="text-[14px] text-text-muted">Loading…</p>
         )}
 
         {rows !== null && rows.length === 0 && !error && (
-          <p className="text-[14px] text-text-muted">queue is empty.</p>
+          <p className="text-[14px] text-text-muted">Queue is empty.</p>
         )}
 
         {rows?.map((row) => (
@@ -166,7 +171,7 @@ function Queue({ adminKey }: { adminKey: string }) {
                     target="_blank"
                     className="rounded-[12px] border border-border bg-bg px-3 py-2 text-[12px] text-text-soft hover:text-text hover:border-text-soft text-center"
                   >
-                    view
+                    View
                   </Link>
                 )}
                 <button
@@ -174,12 +179,14 @@ function Queue({ adminKey }: { adminKey: string }) {
                   disabled={busyId === row._id}
                   className="rounded-[12px] bg-text px-3 py-2 text-[12px] font-medium text-bg disabled:opacity-40 hover:bg-text-soft transition-colors"
                 >
-                  {busyId === row._id ? "approving…" : "approve"}
+                  {busyId === row._id ? "Approving…" : "Approve"}
                 </button>
               </div>
             </div>
-          </article>
-        ))}
+            </article>
+          ))}
+          </div>
+        </div>
       </div>
     </div>
   );

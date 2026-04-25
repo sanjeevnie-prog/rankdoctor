@@ -116,6 +116,18 @@ export async function diagnose(req: DiagnoseRequest): Promise<{
     diagnosis = { ...json, generated_at: Date.now() };
     diagnosis.url = cleanUrl;
     diagnosis.keyword = cleanKeyword;
+    // Hardening rule #2 reinforcement: the request's priorRank is
+    // authoritative. If history_available is true but the model echoed a
+    // different prior_rank, overwrite it with what the user actually typed.
+    if (
+      diagnosis.rank_info.history_available === true &&
+      typeof priorRank === "number"
+    ) {
+      diagnosis.rank_info = {
+        ...diagnosis.rank_info,
+        prior_rank: priorRank,
+      };
+    }
     // Ensure the data_gaps list reflects what the fetchers actually reported.
     // This is belt-and-suspenders for hardening rule #3.
     diagnosis.data_gaps = mergeDataGaps(diagnosis.data_gaps ?? [], {
@@ -223,10 +235,29 @@ function buildUserMessage(args: BuildArgs): string {
   lines.push("=== Data source 4: PageSpeed (mobile, Core Web Vitals) ===");
   if (pagespeed.ok) {
     const d = pagespeed.data;
-    lines.push(`performanceScore: ${nullableNum(d.performanceScore)}`);
-    lines.push(`LCP_ms: ${nullableNum(d.lcp)}`);
-    lines.push(`CLS: ${nullableNum(d.cls)}`);
-    lines.push(`INP_ms: ${nullableNum(d.inp)}`);
+    lines.push(`performanceScore (lab): ${nullableNum(d.performanceScore)}`);
+    lines.push(
+      `cruxAvailable: ${d.cruxAvailable} (true = real-user field data present; prefer field over lab for ranking diagnosis)`,
+    );
+    lines.push("");
+    lines.push("LCP (Largest Contentful Paint):");
+    lines.push(`  field (real users, p75): ${nullableNum(d.lcp.fieldValue)}ms${d.lcp.fieldCategory ? ` [${d.lcp.fieldCategory}]` : ""}`);
+    lines.push(`  lab (Lighthouse simulation): ${nullableNum(d.lcp.labValue)}ms`);
+    lines.push(`  preferred for diagnosis: ${nullableNum(d.lcp.value)}ms (source: ${d.lcp.source ?? "none"})`);
+    lines.push("");
+    lines.push("CLS (Cumulative Layout Shift):");
+    lines.push(`  field (real users, p75): ${nullableNum(d.cls.fieldValue)}${d.cls.fieldCategory ? ` [${d.cls.fieldCategory}]` : ""}`);
+    lines.push(`  lab (Lighthouse simulation): ${nullableNum(d.cls.labValue)}`);
+    lines.push(`  preferred for diagnosis: ${nullableNum(d.cls.value)} (source: ${d.cls.source ?? "none"})`);
+    lines.push("");
+    lines.push("INP (Interaction to Next Paint):");
+    lines.push(`  field (real users, p75): ${nullableNum(d.inp.fieldValue)}ms${d.inp.fieldCategory ? ` [${d.inp.fieldCategory}]` : ""}`);
+    lines.push(`  lab (Lighthouse simulation): ${nullableNum(d.inp.labValue)}ms`);
+    lines.push(`  preferred for diagnosis: ${nullableNum(d.inp.value)}ms (source: ${d.inp.source ?? "none"})`);
+    lines.push("");
+    lines.push(
+      "REMINDER: Google's Page Experience ranking signal uses CrUX (field) data, not Lighthouse (lab). When citing CWV in your diagnosis, use the 'preferred' value and reference the FAST/AVERAGE/SLOW category — that is what Google sees.",
+    );
   } else {
     lines.push(`ERROR: ${pagespeed.reason}`);
   }
@@ -301,20 +332,27 @@ async function runToolLoop(
     lastContent = response.content;
     lastStop = response.stop_reason ?? null;
 
-    if (response.stop_reason === "pause_turn") {
-      // Server-side web_search hit its iteration limit; re-send the assistant
-      // turn to resume. The next API call needs `messages` ending on assistant
-      // for pause_turn — Anthropic resumes the same turn rather than expecting
-      // a user follow-up.
+    // Re-send the assistant turn on either resume signal:
+    //   pause_turn — server-side web_search hit its iteration limit
+    //   tool_use   — model invoked a tool and is mid-thought
+    // For both, Anthropic expects messages to end on assistant; the API
+    // resumes the same logical turn rather than waiting for a user reply.
+    if (response.stop_reason === "pause_turn" || response.stop_reason === "tool_use") {
       messages.push({ role: "assistant", content: response.content });
       continue;
     }
-    // end_turn, tool_use, max_tokens, stop_sequence, refusal — natural stop.
-    // tool_use shouldn't fire for server-side web_search; if it does, we
-    // break and let the parser try whatever text we got. (Re-sending an
-    // assistant-only turn for non-pause_turn cases is rejected by some SDK
-    // versions with "last message must be user".)
+    // end_turn, max_tokens, stop_sequence, refusal — natural stop.
     break;
+  }
+
+  // If we ran out of resume budget without ever reaching end_turn, the text
+  // we have is partial. Surface that so callClaudeWithRetry / fallback don't
+  // silently ship a half-baked diagnosis.
+  if (lastStop === "pause_turn" || lastStop === "tool_use") {
+    console.warn(
+      `tool-use loop exhausted budget after 4 turns; lastStop=${lastStop}. Forcing parse failure → retry/fallback.`,
+    );
+    return { finalText: null, rawContent: lastContent, stopReason: lastStop };
   }
 
   const finalText = extractText(lastContent);
@@ -384,14 +422,20 @@ function validateDiagnosis(v: unknown): v is DiagnosisJson {
 
   const ri = o.rank_info as Record<string, unknown>;
   if (typeof ri.history_available !== "boolean") return false;
-  // history_available: true requires a numeric prior_rank and a numeric drop.
-  // history_available: false has no extra requirements (current_rank may be
-  // null or number, validated implicitly downstream).
+  // typeof NaN === "number" and typeof Infinity === "number", so guard with
+  // Number.isFinite. Ranks must be finite positive integers; the validator
+  // also rejects 0 / negatives since SERP positions are 1-indexed.
+  const isPositiveFinite = (n: unknown) =>
+    typeof n === "number" && Number.isFinite(n) && n >= 1;
   if (ri.history_available === true) {
-    if (typeof ri.prior_rank !== "number") return false;
-    if (typeof ri.drop !== "number") return false;
+    if (!isPositiveFinite(ri.prior_rank)) return false;
+    // drop may be null when current_rank is null (we know prior but not now).
+    // When it IS a number, it must be finite.
+    if (ri.drop !== null && (typeof ri.drop !== "number" || !Number.isFinite(ri.drop))) {
+      return false;
+    }
   }
-  if (ri.current_rank !== null && typeof ri.current_rank !== "number") return false;
+  if (ri.current_rank !== null && !isPositiveFinite(ri.current_rank)) return false;
 
   for (const c of o.causes) {
     if (!c || typeof c !== "object") return false;

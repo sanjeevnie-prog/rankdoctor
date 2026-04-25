@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  /* dark-only base palette */
-  --bg: #0A0A0A;
-  --bg-raised: #111111;
-  --bg-card: #121212;
-  --border: #1f1f1f;
-  --border-soft: #181818;
-  --text: #f5f5f5;
-  --text-soft: #b8b8b8;
-  --text-muted: #6e6e6e;
+  /* mobbin-inspired light theme — applied across every page */
+  --bg: #FFFFFF;
+  --bg-raised: #FAFAFA;
+  --bg-card: #F4F4F2;
+  --border: #E4E4E0;
+  --border-soft: #EFEFED;
+  --text: #1A1A1A;
+  --text-soft: #5C5C5C;
+  --text-muted: #8E8E8E;
 
-  /* severity accents — muted */
-  --severity-critical: #c54a48;
-  --severity-high: #c8923a;
-  --severity-medium: #5d9a6f;
+  /* severity accents — bright + saturated so they pop against white */
+  --severity-critical: #DC2626;
+  --severity-high: #D97706;
+  --severity-medium: #059669;
 }
 
 @theme inline {
@@ -40,7 +40,7 @@ body {
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -52,13 +52,13 @@ body {
     "Segoe UI",
     Inter,
     sans-serif;
-  font-feature-settings: "ss01", "cv11", "kern";
+  font-feature-settings: "ss01", "kern";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: #2a2a2a;
+  background: #FCE7E7;
   color: var(--text);
 }
 
@@ -66,7 +66,7 @@ body {
   color: var(--text-muted);
 }
 
-/* thin scrollbar to match the dark surface */
+/* light scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -75,11 +75,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1f1f1f;
+  background: #D4D4D0;
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2a2a2a;
+  background: #B8B8B4;
 }
 
 @keyframes fade-up {

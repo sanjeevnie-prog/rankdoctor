@@ -15,7 +15,7 @@ export function ShareCardPreview({ diagnosis }: { diagnosis: DiagnosisJson }) {
   return (
     <div className="space-y-3">
       <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-        what your followers will see
+        What your followers will see
       </p>
       {/* 1200x630 aspect ratio mini-preview. Same content + layout as the OG image. */}
       <div
@@ -29,7 +29,7 @@ export function ShareCardPreview({ diagnosis }: { diagnosis: DiagnosisJson }) {
               rankdoctor
             </span>
             <span className="text-[10px] md:text-[11px] uppercase tracking-[0.22em] text-text-muted">
-              diagnosis
+              Diagnosis
             </span>
           </div>
 
@@ -48,7 +48,7 @@ export function ShareCardPreview({ diagnosis }: { diagnosis: DiagnosisJson }) {
           {/* bottom: top finding */}
           <div className="space-y-1.5">
             <div className="text-[9px] md:text-[10px] uppercase tracking-[0.22em] text-text-muted">
-              top finding
+              Top finding
             </div>
             <div className="text-text leading-snug text-[13px] md:text-[16px] line-clamp-2">
               {topFindingHeadline}

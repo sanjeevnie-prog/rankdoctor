@@ -5,7 +5,12 @@
 //   npm run brain -- "<url>" "<keyword>" [priorRank]
 //
 // Pretty-prints the DiagnosisJson to stdout, and writes the full result
-// (diagnosis + raw side-channel data) to ./tmp/brain-<unix>.json.
+// (diagnosis + raw side-channel data) to ./tmp/brain-<unix-ms>.json.
+
+// Load .env.local before any other imports. Next.js auto-loads it for the
+// dev server, but the CLI runs under plain Node, so we wire it manually.
+import { config as loadDotenv } from "dotenv";
+loadDotenv({ path: ".env.local" });
 
 import { writeFile, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";

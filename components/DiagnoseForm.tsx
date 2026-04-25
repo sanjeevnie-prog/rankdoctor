@@ -38,11 +38,11 @@ export function DiagnoseForm({ onSubmit, disabled }: DiagnoseFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="w-full space-y-4">
+    <form onSubmit={handleSubmit} className="w-full space-y-3 text-left">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <label className="block">
-          <span className="block text-xs uppercase tracking-[0.18em] text-text-muted mb-2">
-            url
+          <span className="block text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted mb-2 ml-5">
+            URL
           </span>
           <input
             type="url"
@@ -55,18 +55,18 @@ export function DiagnoseForm({ onSubmit, disabled }: DiagnoseFormProps) {
             disabled={disabled}
             required
             aria-invalid={showUrlError}
-            className="w-full rounded-[12px] border border-border bg-bg-card px-4 py-3 text-[15px] text-text placeholder:text-text-muted outline-none focus:border-text-soft transition-colors aria-[invalid=true]:border-severity-critical/60"
+            className="w-full rounded-full border border-black/20 bg-white px-5 py-3.5 text-[15px] text-black placeholder:text-black/40 outline-none focus:border-black transition-colors aria-[invalid=true]:border-red-500/70"
           />
           {showUrlError && (
-            <p className="mt-1.5 text-[11px] text-severity-critical">
-              needs a full URL including https://
+            <p className="mt-1.5 ml-5 text-[12px] text-severity-critical">
+              Needs a full URL including https://
             </p>
           )}
         </label>
 
         <label className="block">
-          <span className="block text-xs uppercase tracking-[0.18em] text-text-muted mb-2">
-            target keyword
+          <span className="block text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted mb-2 ml-5">
+            Target keyword
           </span>
           <input
             type="text"
@@ -76,21 +76,21 @@ export function DiagnoseForm({ onSubmit, disabled }: DiagnoseFormProps) {
             onChange={(e) => setKeyword(e.target.value)}
             disabled={disabled}
             required
-            className="w-full rounded-[12px] border border-border bg-bg-card px-4 py-3 text-[15px] text-text placeholder:text-text-muted outline-none focus:border-text-soft transition-colors"
+            className="w-full rounded-full border border-border bg-bg px-5 py-3.5 text-[15px] text-text placeholder:text-text-muted outline-none focus:border-text transition-colors"
           />
         </label>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
         <button
           type="submit"
           disabled={!canSubmit}
-          className="rounded-[12px] bg-text px-5 py-3 text-sm font-medium text-bg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-text-soft transition-colors w-full sm:w-auto"
+          className="w-full sm:w-auto rounded-full px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_6px_18px_-6px_rgba(239,68,68,0.55)] active:translate-y-[1px] transition-all bg-[#EF4444] hover:bg-[#DC2626] hover:shadow-[0_8px_22px_-6px_rgba(239,68,68,0.7)] disabled:bg-[#FCA5A5] disabled:shadow-none disabled:cursor-not-allowed"
         >
-          diagnose
+          Diagnose →
         </button>
-        <p className="text-xs text-text-muted">
-          takes about 15-30 seconds. we fetch SERP, page history, pagespeed, algo updates.
+        <p className="text-[12px] text-text-muted sm:text-right">
+          Takes about 30 seconds. No signup.
         </p>
       </div>
     </form>

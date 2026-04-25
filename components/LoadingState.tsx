@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 
 const STEPS = [
-  "fetching SERP position",
-  "checking page history on wayback",
-  "running pagespeed",
-  "cross-referencing algo updates",
-  "synthesizing diagnosis",
+  "Fetching SERP position",
+  "Checking page history on Wayback",
+  "Running PageSpeed",
+  "Cross-referencing algo updates",
+  "Synthesizing diagnosis",
 ];
 
 export function LoadingState() {
@@ -31,7 +31,7 @@ export function LoadingState() {
   return (
     <div className="rounded-[12px] border border-border bg-bg-card p-6 md:p-7 fade-up">
       <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-5">
-        examining the patient
+        Examining the patient
       </p>
       <ul className="space-y-3">
         {STEPS.map((step, i) => {
@@ -66,7 +66,7 @@ export function LoadingState() {
         })}
       </ul>
       <p className="mt-6 text-xs text-text-muted">
-        about 15-30 seconds. don&apos;t close the tab.
+        About 15-30 seconds. Don&apos;t close the tab.
       </p>
     </div>
   );

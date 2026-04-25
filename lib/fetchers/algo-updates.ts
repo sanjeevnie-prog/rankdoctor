@@ -41,18 +41,16 @@ const CONFIRMED_UPDATES: AlgoUpdate[] = [
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
+// Async signature is preserved so the orchestrator can include this in
+// Promise.allSettled alongside the real network fetchers — but the body is
+// pure compute, no awaits. No try/catch: filtering a const array with
+// Number.isFinite cannot throw.
 export async function fetchAlgoUpdates(): Promise<AlgoUpdatesResult> {
-  try {
-    const now = Date.now();
-    const cutoff = now - NINETY_DAYS_MS;
-    const updates = CONFIRMED_UPDATES.filter((u) => {
-      const t = Date.parse(u.date);
-      return Number.isFinite(t) && t >= cutoff && t <= now;
-    });
-    return { ok: true, data: { updates } };
-  } catch (err) {
-    const reason =
-      err instanceof Error ? `algo-updates failed: ${err.message}` : "algo-updates failed";
-    return { ok: false, reason };
-  }
+  const now = Date.now();
+  const cutoff = now - NINETY_DAYS_MS;
+  const updates = CONFIRMED_UPDATES.filter((u) => {
+    const t = Date.parse(u.date);
+    return Number.isFinite(t) && t >= cutoff && t <= now;
+  });
+  return { ok: true, data: { updates } };
 }

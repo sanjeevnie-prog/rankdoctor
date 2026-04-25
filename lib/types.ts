@@ -13,8 +13,11 @@ export type DiagnosisCause = {
   confidence?: number;
 };
 
+// `drop` is allowed to be `null` when `prior_rank` is known but
+// `current_rank` couldn't be determined — you can't compute a delta from
+// one number alone. The frontend hides the X→Y hero in this case anyway.
 export type DiagnosisRankInfo =
-  | { history_available: true; current_rank: number | null; prior_rank: number; drop: number }
+  | { history_available: true; current_rank: number | null; prior_rank: number; drop: number | null }
   | { history_available: false; current_rank: number | null };
 
 export type DataGap = {
@@ -31,6 +34,12 @@ export type DiagnosisJson = {
   data_gaps: DataGap[];
   generated_at: number;
 };
+
+// What `/d/{token}` (and the OG image) receive from Convex `getByShareToken`.
+// Public DiagnosisJson fields plus the share token. The validator in
+// convex/diagnoses.ts is the runtime source of truth; this type mirrors it
+// for callers consuming the result.
+export type PublicDiagnosis = DiagnosisJson & { share_token: string };
 
 export type DiagnoseRequest = {
   url: string;

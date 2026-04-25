@@ -8,6 +8,7 @@ import { DiagnoseForm } from "@/components/DiagnoseForm";
 import { LoadingState } from "@/components/LoadingState";
 import { DiagnosisOutput } from "@/components/DiagnosisOutput";
 import { EmailCapture } from "@/components/EmailCapture";
+import { PillNav } from "@/components/PillNav";
 import type { DiagnoseResponse, DiagnosisJson } from "@/lib/types";
 
 type RecentRun = {
@@ -140,111 +141,276 @@ function HomeInner() {
     }
   }
 
+  // Form stage gets the light/mobbin treatment. Loading + result + error +
+  // email-capture stages keep the dark layout (the diagnosis cards are
+  // scope-locked dark; redesigning them is a separate pass).
+  if (stage.kind === "form") {
+    return (
+      <FormView
+        onSubmit={handleSubmit}
+        capStatus={capStatus}
+      />
+    );
+  }
+
+  // Non-form stages: light layout, same pill nav as the form view.
+  const capLabel = capStatus ? `${capStatus.total}/${capStatus.cap}` : undefined;
   return (
-    <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col px-5 pt-10 pb-20 md:px-8 md:pt-16">
-      <Header capStatus={capStatus} />
+    <div className="min-h-screen w-full bg-bg text-text">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-6 pt-6 pb-12 md:px-10 md:pt-8">
+        <PillNav rightLabel={capLabel} />
 
-      <Hero />
+        <div className="mx-auto w-full max-w-[820px] mt-12 md:mt-16 flex-1">
+          {stage.kind === "loading" && <LoadingState />}
 
-      <div className="mt-10 md:mt-14">
-        {stage.kind === "form" && (
-          <DiagnoseForm onSubmit={handleSubmit} />
-        )}
+          {stage.kind === "result" && (
+            <div className="space-y-10">
+              <DiagnosisOutput
+                diagnosis={stage.diagnosis}
+                shareToken={stage.share_token}
+                interactive
+                capStatus={capStatus ?? undefined}
+                onOptInChange={handleOptInChange}
+              />
 
-        {stage.kind === "loading" && <LoadingState />}
+              <div className="pt-4 border-t border-border-soft">
+                <button
+                  onClick={() => setStage({ kind: "form" })}
+                  className="text-sm text-text-soft hover:text-text underline underline-offset-4 decoration-text-muted/40 hover:decoration-text-soft"
+                >
+                  Run another diagnosis
+                </button>
+              </div>
+            </div>
+          )}
 
-        {stage.kind === "result" && (
-          <div className="space-y-10">
-            <DiagnosisOutput
-              diagnosis={stage.diagnosis}
-              shareToken={stage.share_token}
-              interactive
-              capStatus={capStatus ?? undefined}
-              onOptInChange={handleOptInChange}
-            />
+          {stage.kind === "rate_limited" && <EmailCapture variant="rate_limited" />}
+          {stage.kind === "cap_reached" && <EmailCapture variant="cap_reached" />}
 
-            <div className="pt-4 border-t border-border-soft">
+          {stage.kind === "error" && (
+            <div className="rounded-[12px] border border-border bg-bg-card p-6">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-severity-critical mb-2">
+                Something went wrong
+              </p>
+              <p className="text-[15px] text-text-soft leading-relaxed">
+                {stage.message}
+              </p>
               <button
                 onClick={() => setStage({ kind: "form" })}
-                className="text-sm text-text-soft hover:text-text underline underline-offset-4 decoration-text-muted/40 hover:decoration-text-soft"
+                className="mt-5 rounded-[12px] border border-border bg-bg px-4 py-2.5 text-sm text-text hover:border-text-soft"
               >
-                run another diagnosis
+                Try again
               </button>
             </div>
-          </div>
-        )}
+          )}
 
-        {stage.kind === "rate_limited" && <EmailCapture variant="rate_limited" />}
-        {stage.kind === "cap_reached" && <EmailCapture variant="cap_reached" />}
+          {recentRuns.length > 0 && stage.kind === "result" && (
+            <RecentRuns runs={recentRuns} />
+          )}
+        </div>
 
-        {stage.kind === "error" && (
-          <div className="rounded-[12px] border border-border bg-bg-card p-6">
-            <p className="text-[11px] uppercase tracking-[0.22em] text-severity-critical mb-2">
-              something went wrong
-            </p>
-            <p className="text-[15px] text-text-soft leading-relaxed">
-              {stage.message}
-            </p>
-            <button
-              onClick={() => setStage({ kind: "form" })}
-              className="mt-5 rounded-[12px] border border-border bg-bg px-4 py-2.5 text-sm text-text hover:border-text-soft"
-            >
-              try again
-            </button>
-          </div>
-        )}
+        <Footer />
       </div>
-
-      {recentRuns.length > 0 && stage.kind === "result" && (
-        <RecentRuns runs={recentRuns} />
-      )}
-
-      <Footer />
     </div>
   );
 }
 
-function Header({
+function FormView({
+  onSubmit,
   capStatus,
 }: {
+  onSubmit: (input: { url: string; keyword: string }) => void;
   capStatus: { total: number; cap: number; closed: boolean } | null;
 }) {
   return (
-    <header className="flex items-center justify-between">
-      <Link href="/" className="text-sm font-medium tracking-[-0.01em] text-text">
-        rankdoctor
-      </Link>
-      <nav className="flex items-center gap-5 text-[13px] text-text-soft">
-        <Link href="/examples" className="hover:text-text">
-          examples
-        </Link>
-        {capStatus && (
-          <span className="text-text-muted tabular-nums">
-            {capStatus.total}/{capStatus.cap}
-          </span>
-        )}
-      </nav>
-    </header>
+    <div className="min-h-screen w-full bg-bg text-text overflow-x-hidden">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-6 pt-6 pb-12 md:px-10 md:pt-8">
+        <PillNav rightLabel={capStatus ? `${capStatus.total}/${capStatus.cap}` : undefined} />
+
+        {/* hero — sized to fit above the fold (everything from doctor-sign
+            to the diagnose button visible in the first viewport). */}
+        <section className="flex flex-1 flex-col items-center justify-center pt-6 pb-8 text-center md:pt-8 md:pb-10">
+          <DoctorSign />
+          <EkgBackdrop />
+          <h1 className="font-bold tracking-[-0.045em] leading-[0.95] text-[40px] sm:text-[56px] md:text-[72px] lg:text-[88px] max-w-[12ch] text-balance text-text">
+            ER for crashed rankings.
+          </h1>
+
+          <p className="mt-5 max-w-[52ch] text-[15px] md:text-[17px] leading-[1.5] text-text-soft text-balance">
+            A diagnosis in 30 seconds — 3-5 causes ranked critical to mild,
+            with a prescription for each.
+          </p>
+
+          {/* form */}
+          <div className="mt-7 md:mt-8 w-full max-w-[640px]">
+            <DiagnoseForm onSubmit={onSubmit} />
+          </div>
+        </section>
+
+        {/* what we check — below the form per scope */}
+        <section className="border-t border-border-soft pt-12 pb-12">
+          <p className="mb-8 text-center text-[12px] font-medium uppercase tracking-[0.18em] text-text-muted">
+            What we check
+          </p>
+          <div className="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-6 max-w-[960px] mx-auto">
+            <CheckItem
+              n="01"
+              title="The SERP"
+              body="Where you rank now and who's beating you for the keyword."
+            />
+            <CheckItem
+              n="02"
+              title="Page changes"
+              body="What's different on your page since the last good ranking."
+            />
+            <CheckItem
+              n="03"
+              title="Core web vitals"
+              body="LCP, INP, CLS — and whether they slipped recently."
+            />
+            <CheckItem
+              n="04"
+              title="Google updates"
+              body="Confirmed core and spam updates within the last 90 days."
+            />
+          </div>
+        </section>
+
+        {/* footer */}
+        <footer className="mt-auto pt-10 flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between text-[13px] text-text-muted">
+          <span>Rankdoctor — weekend beta.</span>
+          <Link
+            href="/waitlist"
+            className="hover:text-text underline-offset-4 hover:underline"
+          >
+            Join the v2 waitlist →
+          </Link>
+        </footer>
+      </div>
+    </div>
   );
 }
 
-function Hero() {
+// Hospital-corridor "ready" sign — pulsing green dot + status text, like
+// the placard outside an exam room when the doctor calls you in. Sits above
+// the EKG strip in the hero. Decorative; no real state behind it.
+function DoctorSign() {
   return (
-    <section className="pt-14 md:pt-20">
-      <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-5">
-        a doctor for your dropped rankings
-      </p>
-      <h1 className="text-[40px] md:text-[56px] leading-[1.02] tracking-[-0.025em] text-text font-medium">
-        your ranking dropped.
-        <br />
-        <span className="text-text-soft">things are going to be okay.</span>
-      </h1>
-      <p className="mt-6 max-w-prose text-[16px] md:text-[17px] leading-relaxed text-text-soft">
-        paste the page that lost ground and the keyword it was ranking for. we&apos;ll
-        check the SERP, page history, pagespeed, and recent algo updates, then return
-        a ranked list of likely causes — each with a specific fix.
-      </p>
-    </section>
+    <div
+      className="mb-3 md:mb-4 inline-flex items-center gap-2 rounded-full bg-[#F4F4F2] pl-2.5 pr-3.5 py-1.5 shadow-[0_1px_0_rgba(0,0,0,0.04),0_6px_18px_-10px_rgba(0,0,0,0.12)]"
+      aria-hidden
+    >
+      <span className="relative inline-flex h-1.5 w-1.5">
+        <span className="absolute inset-0 inline-flex h-1.5 w-1.5 animate-ping rounded-full bg-emerald-500/70" />
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      </span>
+      <span className="text-[11px] md:text-[12px] font-medium tracking-[-0.005em] text-text-soft">
+        The doctor will see you now
+      </span>
+    </div>
+  );
+}
+
+// Decorative ER-monitor strip — sits above the headline like an actual
+// monitor display above the patient. Heartbeat spikes for "ranking healthy",
+// then a sharp drop on the right for "ranking crashed" — mirrors the page's
+// pitch in shape. Pure SVG + CSS animation; no real data behind it.
+function EkgBackdrop() {
+  return (
+    <div
+      className="pointer-events-none mb-4 md:mb-5 flex w-full justify-center overflow-hidden"
+      aria-hidden
+    >
+      <svg
+        viewBox="0 0 1200 280"
+        preserveAspectRatio="xMidYMid meet"
+        className="w-full max-w-[760px] h-[60px] md:h-[80px]"
+      >
+        <defs>
+          <linearGradient id="ekg-gradient" x1="0" y1="0" x2="1" y2="0">
+            {/* full story arc, mapped to the new ranking-chart path geometry:
+                healthy plateau → warning → crash → recovering → recovered */}
+            <stop offset="0%" stopColor="#34D399" stopOpacity="0.55" />
+            <stop offset="55%" stopColor="#34D399" stopOpacity="0.6" />
+            <stop offset="65%" stopColor="#F59E0B" stopOpacity="0.6" />
+            <stop offset="74%" stopColor="#EF4444" stopOpacity="0.8" />
+            <stop offset="86%" stopColor="#F59E0B" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="#10B981" stopOpacity="0.9" />
+          </linearGradient>
+          <style>{`
+            @keyframes ekg-draw {
+              0% { stroke-dashoffset: 4000; }
+              80% { stroke-dashoffset: 0; }
+              100% { stroke-dashoffset: 0; }
+            }
+            @keyframes pulse-dot {
+              0%, 70% { opacity: 0; transform: scale(0.6); }
+              80% { opacity: 1; transform: scale(1.2); }
+              100% { opacity: 0.6; transform: scale(1); }
+            }
+            .ekg-path {
+              stroke-dasharray: 4000;
+              stroke-dashoffset: 4000;
+              animation: ekg-draw 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+            }
+            .ekg-pulse {
+              transform-origin: center;
+              transform-box: fill-box;
+              animation: pulse-dot 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+            }
+          `}</style>
+        </defs>
+        {/* SEO ranking chart shape (not heartbeat):
+              healthy plateau with natural day-to-day micro-noise →
+              sharp crash → bottom flat (diagnosis) →
+              smooth recovery curve climbing back above the baseline */}
+        <path
+          className="ekg-path"
+          d="
+            M 0 128
+            L 90 124
+            L 180 132
+            L 270 122
+            L 360 130
+            L 450 120
+            L 540 128
+            L 630 118
+            L 720 130
+            L 780 138
+            L 870 248
+            L 920 248
+            C 980 225, 1040 195, 1100 145
+            L 1180 95
+          "
+          fill="none"
+          stroke="url(#ekg-gradient)"
+          strokeWidth="3.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* end-of-line pulse dot — sits at the recovered position, pulses
+            green to signal "back to healthy / better than before". */}
+        <circle
+          className="ekg-pulse"
+          cx="1180"
+          cy="95"
+          r="6"
+          fill="#10B981"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function CheckItem({ n, title, body }: { n: string; title: string; body: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium tracking-[0.18em] text-black/55">{n}</p>
+      <h3 className="mt-2 text-[16px] md:text-[17px] font-semibold tracking-tight text-black">
+        {title}
+      </h3>
+      <p className="mt-1.5 text-[13px] md:text-[14px] leading-[1.5] text-black/65">{body}</p>
+    </div>
   );
 }
 
@@ -252,7 +418,7 @@ function RecentRuns({ runs }: { runs: RecentRun[] }) {
   return (
     <section className="mt-14 pt-8 border-t border-border-soft">
       <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-4">
-        this session
+        This session
       </p>
       <ul className="space-y-2">
         {runs.map((r) => (
@@ -282,7 +448,7 @@ function Footer() {
   return (
     <footer className="mt-20 pt-8 border-t border-border-soft flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
       <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-        rankdoctor · weekend beta
+        Rankdoctor · weekend beta
       </p>
       <a
         href="mailto:hello@growthx.club"

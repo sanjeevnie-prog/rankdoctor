@@ -58,7 +58,7 @@ export function DiagnosisOutput({
       {/* hero rank info */}
       <section className="rounded-[12px] border border-border bg-bg-card p-6 md:p-8 fade-up">
         <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-          diagnosis
+          Diagnosis
         </p>
         <p className="mt-1 text-[14px] text-text-soft truncate">
           <span className="text-text">{tryHostname(diagnosis.url)}</span>
@@ -70,7 +70,7 @@ export function DiagnosisOutput({
           {showRankHero && rank.history_available ? (
             <div>
               <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-2">
-                position drop
+                Position drop
               </p>
               <div className="flex items-baseline gap-3 text-text">
                 <span className="text-5xl md:text-6xl font-semibold tabular-nums tracking-[-0.03em]">
@@ -82,26 +82,26 @@ export function DiagnosisOutput({
                 </span>
               </div>
               <p className="mt-2 text-xs text-text-muted">
-                down {rank.drop} positions
+                Down {rank.drop} positions
               </p>
             </div>
           ) : (
             <div>
               <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-2">
-                current position
+                Current position
               </p>
               <div className="text-5xl md:text-6xl font-semibold tabular-nums tracking-[-0.03em] text-text">
                 {rank.current_rank ?? "—"}
               </div>
               <p className="mt-2 text-xs text-text-muted">
-                no prior history available — diagnosis based on page + algo signals only.
+                No prior history available — diagnosis based on page + algo signals only.
               </p>
             </div>
           )}
 
           <div className="md:max-w-sm">
             <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-2">
-              expected recovery
+              Expected recovery
             </p>
             <p className="text-[15px] leading-relaxed text-severity-medium">
               {diagnosis.expected_recovery}
@@ -121,7 +121,7 @@ export function DiagnosisOutput({
       {diagnosis.data_gaps.length > 0 && (
         <section className="rounded-[12px] border border-border-soft bg-bg-raised p-5">
           <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted mb-3">
-            data gaps
+            Data gaps
           </p>
           <ul className="space-y-2">
             {diagnosis.data_gaps.map((g, i) => (
@@ -145,7 +145,7 @@ export function DiagnosisOutput({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-[12px] border border-border bg-bg-card px-4 py-2.5 text-sm text-text hover:border-text-soft transition-colors"
             >
-              tweet this diagnosis
+              Tweet this diagnosis
             </a>
           )}
 
@@ -161,7 +161,7 @@ export function DiagnosisOutput({
               className="mt-[3px] h-4 w-4 rounded border-border bg-bg-card accent-text"
             />
             <span className="text-[13px] text-text-soft leading-relaxed">
-              ok to feature this in our public examples list. i&apos;ll be credited as the submitter.
+              Ok to feature this in our public examples list. I&apos;ll be credited as the submitter.
             </span>
           </label>
 

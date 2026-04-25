@@ -7,7 +7,11 @@
 
 import { parse } from "node-html-parser";
 
-const FETCH_TIMEOUT_MS = 15_000;
+// Wayback's CDX API + the archived-raw fetch can each take 20-40s on cold
+// snapshots or unindexed URLs. 15s was failing in round 4 testing — bumped
+// to 60s. This still completes inside the pagespeed timeout (90s), so it
+// doesn't extend overall diagnosis wall-clock time.
+const FETCH_TIMEOUT_MS = 60_000;
 const USER_AGENT =
   "Mozilla/5.0 (compatible; seo-diagnostic-bot/1.0; +https://growthx.club)";
 
@@ -49,18 +53,22 @@ export async function fetchWayback(
       url: `https://web.archive.org/web/${row.timestamp}/${row.original}`,
     }));
 
-    // Most recent first — CDX returns chronological by default. Sort to be safe.
-    snapshots.sort((a, b) => (a.ts < b.ts ? 1 : -1));
+    // Most recent first. Sort numerically: CDX timestamps are 14-digit
+    // YYYYMMDDhhmmss, but defending against any odd-length row keeps the
+    // "newest" picker honest.
+    snapshots.sort((a, b) => Number(b.ts) - Number(a.ts));
 
     let textDiff: string | null = null;
     const resolvedText = await Promise.resolve(currentNormalizedText);
     if (resolvedText && snapshots.length > 0) {
       try {
         const newest = snapshots[0];
-        const archivedRaw = await fetchArchivedRaw(
-          newest.ts,
-          cdxRows.find((r) => r.timestamp === newest.ts)?.original ?? url,
-        );
+        const newestRow = cdxRows.find((r) => r.timestamp === newest.ts);
+        // newest was built from cdxRows, so the find must match. If it
+        // somehow doesn't, bail on the diff rather than fall back to the
+        // input URL (which may differ from the canonical archived URL).
+        if (!newestRow) throw new Error("newest snapshot row missing from cdx");
+        const archivedRaw = await fetchArchivedRaw(newest.ts, newestRow.original);
         if (archivedRaw) {
           textDiff = summarizeDiff(resolvedText, archivedRaw);
         }

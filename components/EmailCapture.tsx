@@ -15,19 +15,19 @@ const COPY: Record<
   { headline: string; subline: string }
 > = {
   rate_limited: {
-    headline: "you've used your 5 free diagnoses.",
+    headline: "You've used your 5 free diagnoses.",
     subline:
-      "drop your email for v2 — multi-URL tracking and weekly monitoring. we'll email you when it opens.",
+      "Drop your email for v2 — multi-URL tracking and weekly monitoring. We'll email you when it opens.",
   },
   cap_reached: {
-    headline: "saturday's beta is closed.",
+    headline: "Saturday's beta is closed.",
     subline:
-      "we hit the 250-diagnosis weekend cap. drop your email for v2 with multi-URL tracking and weekly monitoring.",
+      "We hit the 250-diagnosis weekend cap. Drop your email for v2 with multi-URL tracking and weekly monitoring.",
   },
   waitlist_page: {
-    headline: "weekly monitoring for your top 10 rankings.",
+    headline: "Weekly monitoring for your top 10 rankings.",
     subline:
-      "we'll watch the rankings. you'll get a slack ping the day they drop. drop your email — we'll be in touch when v2 opens.",
+      "We'll watch the rankings. You'll get a Slack ping the day they drop. Drop your email — we'll be in touch when v2 opens.",
   },
 };
 
@@ -66,7 +66,7 @@ export function EmailCapture({ variant, headline, subline }: EmailCaptureProps) 
 
       {state === "ok" ? (
         <p className="mt-6 text-[14px] text-text-soft">
-          you&apos;re on the list. we&apos;ll be in touch.
+          You&apos;re on the list. We&apos;ll be in touch.
         </p>
       ) : (
         <form
@@ -83,21 +83,21 @@ export function EmailCapture({ variant, headline, subline }: EmailCaptureProps) 
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={state === "loading"}
-            className="flex-1 rounded-[12px] border border-border bg-bg px-4 py-3 text-[15px] text-text placeholder:text-text-muted outline-none focus:border-text-soft transition-colors"
+            className="flex-1 rounded-full border border-border bg-bg px-5 py-3.5 text-[15px] text-text placeholder:text-text-muted outline-none focus:border-text transition-colors"
           />
           <button
             type="submit"
             disabled={state === "loading" || !email.trim()}
-            className="rounded-[12px] bg-text px-5 py-3 text-sm font-medium text-bg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-text-soft transition-colors"
+            className="w-full sm:w-auto rounded-full px-7 py-3.5 text-[15px] font-semibold text-white shadow-[0_6px_18px_-6px_rgba(239,68,68,0.55)] active:translate-y-[1px] transition-all bg-[#EF4444] hover:bg-[#DC2626] hover:shadow-[0_8px_22px_-6px_rgba(239,68,68,0.7)] disabled:bg-[#FCA5A5] disabled:shadow-none disabled:cursor-not-allowed"
           >
-            {state === "loading" ? "saving…" : "notify me"}
+            {state === "loading" ? "Saving…" : "Notify me →"}
           </button>
         </form>
       )}
 
       {state === "error" && (
         <p className="mt-3 text-[13px] text-severity-critical">
-          something went wrong. try again in a minute.
+          Something went wrong. Try again in a minute.
         </p>
       )}
     </div>

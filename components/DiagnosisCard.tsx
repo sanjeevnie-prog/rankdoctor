@@ -1,9 +1,9 @@
 import type { DiagnosisCause, Severity } from "@/lib/types";
 
 const SEVERITY_LABEL: Record<Severity, string> = {
-  critical: "critical",
-  high: "high",
-  medium: "medium",
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
 };
 
 const SEVERITY_DOT: Record<Severity, string> = {
@@ -50,14 +50,14 @@ export function DiagnosisCard({ cause, index }: { cause: DiagnosisCause; index: 
 
       <div className="flex flex-col gap-1.5">
         <span className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-          fix
+          Fix
         </span>
         <p className="text-[15px] leading-relaxed text-text">{cause.fix}</p>
       </div>
 
       {typeof cause.confidence === "number" && (
         <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-border-soft px-2.5 py-1 text-[11px] text-text-muted">
-          <span>confidence</span>
+          <span>Confidence</span>
           <span className="text-text-soft tabular-nums">
             {Math.round(cause.confidence * 100)}%
           </span>
