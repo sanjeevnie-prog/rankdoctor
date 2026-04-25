@@ -237,7 +237,7 @@ function FormView({
           </h1>
 
           <p className="mt-5 max-w-[52ch] text-[15px] md:text-[17px] leading-[1.5] text-text-soft text-balance">
-            A diagnosis in 30 seconds — 3-5 causes ranked critical to mild,
+            A diagnosis in about 90 seconds — 3-5 causes ranked critical to mild,
             with a prescription for each.
           </p>
 

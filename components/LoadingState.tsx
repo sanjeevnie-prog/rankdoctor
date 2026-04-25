@@ -14,12 +14,11 @@ export function LoadingState() {
   const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
-    // 5 steps spread across ~17s so the progress doesn't sprint past
-    // "synthesizing" while the backend is still working (15-30s budget).
-    // Step 0 shows immediately (initial state); steps 1-4 fire on these
-    // delays from mount. If the backend overshoots, the UI parks on the
+    // 5 steps paced over ~70s so "Synthesizing diagnosis" doesn't appear
+    // until ~70s in, leaving ~20s for the actual response to arrive on a
+    // typical 90s run. If the backend overshoots, the UI parks on the
     // final step rather than re-cycling.
-    const ADVANCE_AT_MS = [3500, 7000, 11000, 16000];
+    const ADVANCE_AT_MS = [10_000, 25_000, 45_000, 68_000];
     const timers = ADVANCE_AT_MS.map((ms, idx) =>
       setTimeout(() => setActiveIndex(idx + 1), ms),
     );
@@ -66,7 +65,7 @@ export function LoadingState() {
         })}
       </ul>
       <p className="mt-6 text-xs text-text-muted">
-        About 15-30 seconds. Don&apos;t close the tab.
+        About 60-90 seconds. Don&apos;t close the tab.
       </p>
     </div>
   );

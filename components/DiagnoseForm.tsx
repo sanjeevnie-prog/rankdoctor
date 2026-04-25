@@ -90,7 +90,7 @@ export function DiagnoseForm({ onSubmit, disabled }: DiagnoseFormProps) {
           Diagnose →
         </button>
         <p className="text-[12px] text-text-muted sm:text-right">
-          Takes about 30 seconds. No signup.
+          Takes about 90 seconds. No signup.
         </p>
       </div>
     </form>
