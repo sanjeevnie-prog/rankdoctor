@@ -1,8 +1,7 @@
 // Shared types for the SEO ranking drop diagnostic.
 //
-// NOTE: backend agent owns this file in the merged main branch. This copy
-// must match exactly so the worktrees can be merged trivially. If anything
-// here changes, coordinate with the backend agent before editing.
+// Source-of-truth for DiagnosisJson. Imported by frontend (rendering),
+// backend (request/response shapes), and brain (orchestrator output).
 
 export type Severity = "critical" | "high" | "medium";
 
