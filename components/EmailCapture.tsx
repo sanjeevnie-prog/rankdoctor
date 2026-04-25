@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 
 export type EmailCaptureProps = {
-  variant: "rate_limited" | "cap_reached";
+  variant: "rate_limited" | "cap_reached" | "waitlist_page";
   /** override the default headline copy if you want to */
   headline?: string;
   /** override the default subline copy if you want to */
@@ -23,6 +23,11 @@ const COPY: Record<
     headline: "saturday's beta is closed.",
     subline:
       "we hit the 250-diagnosis weekend cap. drop your email for v2 with multi-URL tracking and weekly monitoring.",
+  },
+  waitlist_page: {
+    headline: "weekly monitoring for your top 10 rankings.",
+    subline:
+      "we'll watch the rankings. you'll get a slack ping the day they drop. drop your email — we'll be in touch when v2 opens.",
   },
 };
 

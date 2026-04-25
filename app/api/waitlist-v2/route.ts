@@ -6,7 +6,7 @@ import { api } from "../../../convex/_generated/api";
 export const runtime = "nodejs";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ALLOWED_SOURCES = new Set(["rate_limited", "cap_reached"]);
+const ALLOWED_SOURCES = new Set(["rate_limited", "cap_reached", "waitlist_page"]);
 
 export async function POST(request: Request) {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
