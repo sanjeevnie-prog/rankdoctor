@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DiagnosisJson } from "@/lib/types";
 import { DiagnosisCard } from "./DiagnosisCard";
+import { ShareCardPreview } from "./ShareCardPreview";
 
 export type DiagnosisOutputProps = {
   diagnosis: DiagnosisJson;
@@ -133,8 +134,23 @@ export function DiagnosisOutput({
       )}
 
       {interactive && (
-        <section className="space-y-4 pt-2">
-          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+        <section className="space-y-6 pt-2">
+          {/* share card preview — same image that travels as the OG/twitter card */}
+          <ShareCardPreview diagnosis={diagnosis} />
+
+          {tweetIntent && (
+            <a
+              href={tweetIntent}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-[12px] border border-border bg-bg-card px-4 py-2.5 text-sm text-text hover:border-text-soft transition-colors"
+            >
+              tweet this diagnosis
+            </a>
+          )}
+
+          {/* opt-in lives below the share — separate concern from sharing */}
+          <label className="flex items-start gap-2.5 cursor-pointer select-none pt-2">
             <input
               type="checkbox"
               checked={optIn}
@@ -148,17 +164,6 @@ export function DiagnosisOutput({
               ok to feature this in our public examples list. i&apos;ll be credited as the submitter.
             </span>
           </label>
-
-          {tweetIntent && (
-            <a
-              href={tweetIntent}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-[12px] border border-border bg-bg-card px-4 py-2.5 text-sm text-text hover:border-text-soft transition-colors"
-            >
-              tweet this diagnosis
-            </a>
-          )}
 
           {capStatus && (
             <p className="text-xs text-text-muted">
