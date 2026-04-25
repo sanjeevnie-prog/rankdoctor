@@ -8,6 +8,10 @@ import type { DiagnoseRequest, DiagnoseResponse, DiagnosisJson } from "../../../
 // Node runtime — fluid compute is the Vercel default. Do not switch to edge.
 export const runtime = "nodejs";
 
+// Default vercel hobby tier caps functions at 60s; brain runs 30-150s.
+// 300s is the hobby/pro fluid-compute ceiling.
+export const maxDuration = 300;
+
 const COOKIE_NAME = "wd_uid";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
@@ -126,6 +130,10 @@ export async function POST(request: Request) {
   }
 
   // ---- flatten brain's structured raw output for Convex persistence ----
+  // IMPORTANT: Convex documents are capped at ~1MB. The full Lighthouse PSI
+  // response (`raw.pagespeed.data.raw`) can be 1-3MB on its own, and Claude's
+  // raw content blocks (with web_search results inside) can also balloon.
+  // We strip those down to what we actually need for downstream display.
   const persistedRaw = {
     pageTextNormalized:
       raw.pageHtml.ok ? raw.pageHtml.data.normalizedText : undefined,
@@ -133,13 +141,25 @@ export async function POST(request: Request) {
       raw.wayback.ok ? raw.wayback.data.textDiff ?? undefined : undefined,
     waybackSnapshotCount:
       raw.wayback.ok ? raw.wayback.data.snapshotCount : undefined,
-    pagespeedJson:
-      raw.pagespeed.ok ? JSON.stringify(raw.pagespeed.data) : undefined,
+    pagespeedJson: raw.pagespeed.ok
+      ? JSON.stringify({
+          lcp: raw.pagespeed.data.lcp,
+          cls: raw.pagespeed.data.cls,
+          inp: raw.pagespeed.data.inp,
+          performanceScore: raw.pagespeed.data.performanceScore,
+          cruxAvailable: raw.pagespeed.data.cruxAvailable,
+        })
+      : undefined,
     algoUpdatesInWindowJson:
       raw.algoUpdates.ok ? JSON.stringify(raw.algoUpdates.data.updates) : undefined,
+    // Keep claude's stopReason + extract just the final text block — drop the
+    // server_tool_use / web_search_tool_result blocks which can be huge.
     rawClaudeResponse: JSON.stringify({
-      content: raw.claude.rawContent,
       stopReason: raw.claude.stopReason,
+      finalText: raw.claude.rawContent
+        .filter((b) => b.type === "text")
+        .map((b) => (b.type === "text" ? b.text : ""))
+        .join("\n"),
     }),
   };
 
