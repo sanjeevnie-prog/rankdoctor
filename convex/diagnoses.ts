@@ -144,29 +144,60 @@ export const approve = mutation({
 
 // ---- queries ----
 
+// Option A — public share-page query. Returns ONLY the fields the public
+// `/d/{token}` page is allowed to see. Private fields (ipHash, rawClaudeResponse,
+// raw fetcher dumps, priorRank-as-input) physically don't leave the database,
+// so they can't leak via page source, dev tools, or future export bugs.
+//
+// Also unwraps the stored `diagnosisJson` string into the rendered shape so
+// the consumer doesn't have to re-parse.
 export const getByShareToken = query({
   args: { token: v.string() },
   returns: v.union(
     v.null(),
     v.object({
-      _id: v.id("diagnoses"),
-      _creationTime: v.number(),
       url: v.string(),
       keyword: v.string(),
-      priorRank: v.optional(v.number()),
-      diagnosisJson: v.string(),
-      serpPositionCurrent: v.optional(v.number()),
-      pageTextNormalized: v.optional(v.string()),
-      waybackTextDiff: v.optional(v.string()),
-      pagespeedJson: v.optional(v.string()),
-      waybackSnapshotCount: v.optional(v.number()),
-      algoUpdatesInWindowJson: v.optional(v.string()),
-      rawClaudeResponse: v.optional(v.string()),
-      shareToken: v.string(),
-      optedInToExamples: v.boolean(),
-      approvedForPublic: v.boolean(),
-      ipHash: v.string(),
-      createdAt: v.number(),
+      rank_info: v.union(
+        v.object({
+          history_available: v.literal(true),
+          current_rank: v.union(v.number(), v.null()),
+          prior_rank: v.number(),
+          drop: v.number(),
+        }),
+        v.object({
+          history_available: v.literal(false),
+          current_rank: v.union(v.number(), v.null()),
+        }),
+      ),
+      expected_recovery: v.string(),
+      causes: v.array(
+        v.object({
+          severity: v.union(
+            v.literal("critical"),
+            v.literal("high"),
+            v.literal("medium"),
+          ),
+          headline: v.string(),
+          explanation: v.string(),
+          fix: v.string(),
+          confidence: v.optional(v.number()),
+        }),
+      ),
+      data_gaps: v.array(
+        v.object({
+          source: v.union(
+            v.literal("serp"),
+            v.literal("page_html"),
+            v.literal("wayback"),
+            v.literal("pagespeed"),
+            v.literal("algo_updates"),
+          ),
+          reason: v.string(),
+        }),
+      ),
+      generated_at: v.number(),
+      share_token: v.string(),
     }),
   ),
   handler: async (ctx, { token }) => {
@@ -174,7 +205,61 @@ export const getByShareToken = query({
       .query("diagnoses")
       .withIndex("by_share_token", (q) => q.eq("shareToken", token))
       .unique();
-    return row;
+    if (row === null) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.diagnosisJson);
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== "object" || parsed === null) return null;
+
+    const d = parsed as {
+      url?: string;
+      keyword?: string;
+      rank_info?: unknown;
+      expected_recovery?: string;
+      causes?: unknown;
+      data_gaps?: unknown;
+      generated_at?: number;
+    };
+
+    if (
+      typeof d.url !== "string" ||
+      typeof d.keyword !== "string" ||
+      typeof d.expected_recovery !== "string" ||
+      typeof d.generated_at !== "number" ||
+      !Array.isArray(d.causes) ||
+      !Array.isArray(d.data_gaps) ||
+      typeof d.rank_info !== "object" ||
+      d.rank_info === null
+    ) {
+      return null;
+    }
+
+    // Hand back ONLY the public, validated shape. Private fields stay in the row.
+    return {
+      url: d.url,
+      keyword: d.keyword,
+      rank_info: d.rank_info as
+        | { history_available: true; current_rank: number | null; prior_rank: number; drop: number }
+        | { history_available: false; current_rank: number | null },
+      expected_recovery: d.expected_recovery,
+      causes: d.causes as Array<{
+        severity: "critical" | "high" | "medium";
+        headline: string;
+        explanation: string;
+        fix: string;
+        confidence?: number;
+      }>,
+      data_gaps: d.data_gaps as Array<{
+        source: "serp" | "page_html" | "wayback" | "pagespeed" | "algo_updates";
+        reason: string;
+      }>,
+      generated_at: d.generated_at,
+      share_token: row.shareToken,
+    };
   },
 });
 
